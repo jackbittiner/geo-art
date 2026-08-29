@@ -73,6 +73,40 @@ describe('radial repeater', () => {
     )
   })
 
+  it('spins each copy about its own origin, not about the canvas origin', () => {
+    const [only] = radial.expand(
+      config({ count: 1, radius: 10, startAngle: 0, spin: 90 }),
+      rootContext(),
+    )
+    // The copy sits at (10, 0) and is rotated 90 degrees in place, so its local
+    // (1, 0) lands at (10, 1). Under a transposed compose the copy's own origin
+    // would swing to (0, 10) instead.
+    const origin = applyPoint(only.transform, { x: 0, y: 0 })
+    expect(origin.x).toBeCloseTo(10, 9)
+    expect(origin.y).toBeCloseTo(0, 9)
+    const local = applyPoint(only.transform, { x: 1, y: 0 })
+    expect(local.x).toBeCloseTo(10, 9)
+    expect(local.y).toBeCloseTo(1, 9)
+  })
+
+  it('steps every copy around the ring, not just the first', () => {
+    const placements = radial.expand(
+      config({ count: 4, radius: 10, startAngle: 90, spin: 0 }),
+      rootContext(),
+    )
+    const origins = placements.map((p) => applyPoint(p.transform, { x: 0, y: 0 }))
+    const expected = [
+      { x: 0, y: 10 },
+      { x: -10, y: 0 },
+      { x: 0, y: -10 },
+      { x: 10, y: 0 },
+    ]
+    origins.forEach((o, i) => {
+      expect(o.x).toBeCloseTo(expected[i].x, 9)
+      expect(o.y).toBeCloseTo(expected[i].y, 9)
+    })
+  })
+
   it('is reachable through the registry', () => {
     expect(getRepeater('radial')).toBe(radial)
   })
