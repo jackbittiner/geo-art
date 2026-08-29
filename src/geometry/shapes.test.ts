@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import fc from 'fast-check'
 import { polygon, ellipse } from './shapes'
-import { bbox } from './path'
+import { bbox, type Segment } from './path'
 
 describe('polygon', () => {
   it('produces one vertex per side plus a close', () => {
@@ -67,5 +67,25 @@ describe('ellipse', () => {
         return radii.length === 4 && radii.every((r, i) => Math.abs(r - expected[i]) < 1e-9)
       }),
     )
+  })
+
+  it('builds axis-aligned tangent handles at each quarter point', () => {
+    const cubics = ellipse(20, 10, 0).segments.filter(
+      (s): s is Extract<Segment, { c: 'C' }> => s.c === 'C',
+    )
+    expect(cubics).toHaveLength(4)
+
+    const startOf = (i: number) => (i === 0 ? { x: 0, y: -10 } : cubics[i - 1].p)
+
+    cubics.forEach((seg, i) => {
+      const s = startOf(i)
+      const leaving = { x: seg.c1.x - s.x, y: seg.c1.y - s.y }
+      const arriving = { x: seg.p.x - seg.c2.x, y: seg.p.y - seg.c2.y }
+      // At a pole the handle is horizontal; at a side it is vertical.
+      const leavingPole = Math.abs(s.x) < 1e-9
+      expect(Math.abs(leavingPole ? leaving.y : leaving.x)).toBeLessThan(1e-9)
+      const arrivingPole = Math.abs(seg.p.x) < 1e-9
+      expect(Math.abs(arrivingPole ? arriving.y : arriving.x)).toBeLessThan(1e-9)
+    })
   })
 })
