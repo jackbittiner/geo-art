@@ -37,30 +37,40 @@ describe('transform', () => {
 
   // --- property-based ---
 
-  const arbFinite = fc.double({ min: -1000, max: 1000, noNaN: true })
+  const arbComponent = fc.double({ min: -100, max: 100, noNaN: true })
+
+  /**
+   * Well-conditioned matrices only. A near-singular matrix amplifies float64
+   * error under inversion or triple composition past any fixed tolerance,
+   * which would test the IEEE spec rather than this module's algebra.
+   */
   const arbMat = fc
-    .tuple(arbFinite, arbFinite, arbFinite, arbFinite)
-    .filter(([a, b, c, d]) => Math.abs(a * d - b * c) > 1e-3)
+    .tuple(arbComponent, arbComponent, arbComponent, arbComponent)
+    .filter(([a, b, c, d]) => Math.abs(a * d - b * c) > 1)
     .chain(([a, b, c, d]) =>
-      fc.tuple(arbFinite, arbFinite).map(([e, f]) => [a, b, c, d, e, f] as const),
+      fc.tuple(arbComponent, arbComponent).map(([e, f]) => [a, b, c, d, e, f] as const),
     )
+
+  /** Relative comparison: absolute epsilons are meaningless across these magnitudes. */
+  const closeRelative = (a: number, b: number, eps: number) =>
+    Math.abs(a - b) <= eps * Math.max(1, Math.abs(a), Math.abs(b))
 
   it('invert round-trips any invertible matrix', () => {
     fc.assert(
-      fc.property(arbMat, arbFinite, arbFinite, (m, x, y) => {
+      fc.property(arbMat, arbComponent, arbComponent, (m, x, y) => {
         const there = applyPoint(m, { x, y })
         const back = applyPoint(invert(m), there)
-        return closeTo(back.x, x, 1e-4) && closeTo(back.y, y, 1e-4)
+        return closeRelative(back.x, x, 1e-7) && closeRelative(back.y, y, 1e-7)
       }),
     )
   })
 
   it('compose is associative', () => {
     fc.assert(
-      fc.property(arbMat, arbMat, arbMat, arbFinite, arbFinite, (a, b, c, x, y) => {
+      fc.property(arbMat, arbMat, arbMat, arbComponent, arbComponent, (a, b, c, x, y) => {
         const left = applyPoint(compose(compose(a, b), c), { x, y })
         const right = applyPoint(compose(a, compose(b, c)), { x, y })
-        return closeTo(left.x, right.x, 1e-4) && closeTo(left.y, right.y, 1e-4)
+        return closeRelative(left.x, right.x, 1e-6) && closeRelative(left.y, right.y, 1e-6)
       }),
     )
   })
