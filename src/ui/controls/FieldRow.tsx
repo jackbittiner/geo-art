@@ -14,8 +14,10 @@ type Props = {
 }
 
 /**
- * Phase 1 edits constants only. A modulated field (from a loaded document)
- * renders as a read-only chip until the Phase 2 modulation editor lands.
+ * Phase 1 edits constants only. A modulated field (from a loaded document, or
+ * from the Aperture starter) renders as a read-only chip until the Phase 2
+ * modulation editor lands -- but with an escape hatch back to a constant, so
+ * the parameter is not a dead end in the meantime.
  */
 export default function FieldRow({ scope, descriptor, value, onChange }: Props) {
   const id = `field-${scope}-${descriptor.key}`
@@ -31,6 +33,15 @@ export default function FieldRow({ scope, descriptor, value, onChange }: Props) 
         <span className="rounded-full border border-neutral-700 px-2 py-0.5 text-[10px] text-neutral-400">
           {value.base} → {value.to} · {value.source}
         </span>
+        <button
+          type="button"
+          aria-label={`${accessibleName} make constant`}
+          title="Replace the modulation with its base value"
+          className="rounded border border-neutral-700 px-1 py-0.5 text-[10px] text-neutral-400 hover:bg-neutral-800"
+          onClick={() => onChange(value.base)}
+        >
+          constant
+        </button>
       </div>
     )
   }

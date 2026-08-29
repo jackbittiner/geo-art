@@ -140,4 +140,32 @@ describe('Inspector', () => {
     expect(screen.getByTestId('card-shape')).toBeDefined()
     expect(screen.getByTestId('card-style')).toBeDefined()
   })
+
+  // The Aperture starter ships a modulated spin, which Phase 1 cannot edit --
+  // without a way back to a constant the set's most interesting parameter is
+  // untouchable. "constant" replaces the field with its base value.
+  it('turns a modulated field back into a constant', () => {
+    const doc = useStore.getState().doc
+    useStore.setState({
+      doc: {
+        ...doc,
+        layers: [
+          {
+            ...doc.layers[0],
+            repeaters: [
+              { ...doc.layers[0].repeaters[0], spin: { base: 15, to: 360, source: 'index', curve: 'linear' } },
+            ],
+          },
+        ],
+      },
+    })
+    render(<Inspector />)
+
+    fireEvent.click(screen.getByLabelText('repeat 1 spin make constant'))
+
+    expect(useStore.getState().doc.layers[0].repeaters[0]).toMatchObject({ spin: 15 })
+    // And the chip is replaced by an editable slider.
+    expect(screen.queryByTestId('modulated-repeat 1-spin')).toBeNull()
+    expect((screen.getByLabelText('repeat 1 spin') as HTMLInputElement).value).toBe('15')
+  })
 })

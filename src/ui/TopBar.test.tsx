@@ -4,12 +4,18 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import TopBar from './TopBar'
 import { useStore } from '../state/store'
 import { emptyDocument, defaultLayer } from '../document/defaults'
+import { fitViewport } from './viewport'
 
 describe('TopBar', () => {
   beforeEach(() => {
     const doc = emptyDocument()
     doc.layers.push(defaultLayer('halo'))
-    useStore.setState({ doc, selectedLayerId: null })
+    useStore.setState({
+      doc,
+      selectedLayerId: null,
+      viewport: { pan: { x: 0, y: 0 }, zoom: 1 },
+      viewSize: { width: 0, height: 0 },
+    })
   })
 
   it('shows the total instance count', () => {
@@ -89,5 +95,35 @@ describe('TopBar', () => {
     })
 
     expect(input.value).toBe('640')
+  })
+  // fitViewport was written, tested and unreachable: the fit ran once in a
+  // mount effect and there was no control of any kind, so zooming out to
+  // MIN_ZOOM left a page reload as the only way back.
+  it('refits the viewport from the measured pane size', () => {
+    useStore.setState({
+      viewport: { pan: { x: 500, y: 500 }, zoom: 0.02 },
+      viewSize: { width: 800, height: 600 },
+    })
+    render(<TopBar />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Fit' }))
+
+    const doc = useStore.getState().doc
+    expect(useStore.getState().viewport).toEqual(
+      fitViewport(doc.canvas, { width: 800, height: 600 }),
+    )
+    expect(useStore.getState().viewport.zoom).toBeGreaterThan(0.02)
+  })
+
+  it('falls back to the document canvas size when the pane has not been measured', () => {
+    useStore.setState({ viewport: { pan: { x: 9, y: 9 }, zoom: 0.02 } })
+    render(<TopBar />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Fit' }))
+
+    const doc = useStore.getState().doc
+    expect(useStore.getState().viewport).toEqual(
+      fitViewport(doc.canvas, { width: doc.canvas.width, height: doc.canvas.height }),
+    )
   })
 })

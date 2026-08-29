@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
-import { render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import CanvasView from './CanvasView'
 import { useStore } from '../state/store'
 import { emptyDocument, defaultLayer } from '../document/defaults'
-import { zoomAt } from './viewport'
+import { fitViewport, zoomAt } from './viewport'
 
 beforeEach(() => {
   const ctx = {
@@ -69,5 +69,62 @@ describe('CanvasView', () => {
     // using the pointer position relative to the canvas, not the viewport.
     expect(after.pan.x).toBeCloseTo(expected.pan.x, 6)
     expect(after.pan.y).toBeCloseTo(expected.pan.y, 6)
+  })
+  // React 19 registers `wheel` at the root container as a *passive* listener,
+  // so a preventDefault() inside a JSX onWheel handler is ignored: the default
+  // action (trackpad back-navigation on macOS) still fires while zooming. Only
+  // a listener attached to the element with { passive: false } can cancel it,
+  // and defaultPrevented is what proves the cancellation actually took.
+  it('cancels the wheel event so the browser does not also gesture-navigate', () => {
+    render(<CanvasView />)
+    const canvasEl = screen.getByTestId('art-canvas')
+
+    const event = new WheelEvent('wheel', { deltaY: -100, bubbles: true, cancelable: true })
+    canvasEl.dispatchEvent(event)
+
+    expect(event.defaultPrevented).toBe(true)
+  })
+
+  it('refits the view when the document canvas dimensions change', () => {
+    render(<CanvasView />)
+    act(() => {
+      useStore.setState({ viewport: { pan: { x: 120, y: -40 }, zoom: 0.02 } })
+    })
+
+    act(() => {
+      useStore.setState((s) => ({
+        doc: { ...s.doc, canvas: { ...s.doc.canvas, width: 400, height: 300 } },
+      }))
+    })
+
+    const doc = useStore.getState().doc
+    // jsdom reports zero client size, so the component measures against the
+    // document's own canvas -- the same fallback the component uses.
+    expect(useStore.getState().viewport).toEqual(
+      fitViewport(doc.canvas, { width: doc.canvas.width, height: doc.canvas.height }),
+    )
+  })
+
+  it('refits on F, so a view zoomed to the limit is recoverable from the keyboard', () => {
+    render(<CanvasView />)
+    act(() => {
+      useStore.setState({ viewport: { pan: { x: 300, y: 300 }, zoom: 0.02 } })
+    })
+
+    fireEvent.keyDown(screen.getByTestId('art-canvas'), { key: 'f' })
+
+    const doc = useStore.getState().doc
+    expect(useStore.getState().viewport).toEqual(
+      fitViewport(doc.canvas, { width: doc.canvas.width, height: doc.canvas.height }),
+    )
+  })
+
+  it('publishes its measured size to the store for the Fit control', () => {
+    render(<CanvasView />)
+    const doc = useStore.getState().doc
+    expect(useStore.getState().viewSize).toEqual({
+      width: doc.canvas.width,
+      height: doc.canvas.height,
+    })
   })
 })

@@ -4,6 +4,7 @@ import { downloadDocument, readDocumentFile } from '../document/serialize'
 import { downloadPng } from '../render/exportPng'
 import { useStore } from '../state/store'
 import { useEvaluation } from './useEvaluation'
+import { fitViewport } from './viewport'
 
 /**
  * A numeric field backed by a document value, but with its own draft text so
@@ -35,6 +36,8 @@ export default function TopBar() {
   const doc = useStore((s) => s.doc)
   const apply = useStore((s) => s.apply)
   const setDoc = useStore((s) => s.setDoc)
+  const viewSize = useStore((s) => s.viewSize)
+  const setViewport = useStore((s) => s.setViewport)
   const result = useEvaluation()
 
   const width = useSizeField(doc.canvas.width, (w) => apply((d) => setCanvasSize(d, w, d.canvas.height)))
@@ -75,6 +78,21 @@ export default function TopBar() {
 
       <button
         className="ml-auto rounded border border-neutral-700 px-2 py-0.5 hover:bg-neutral-800"
+        title="Frame the whole canvas (F)"
+        onClick={() =>
+          // viewSize is (0, 0) until CanvasView has measured itself -- e.g. the
+          // empty state, where there is no canvas at all. Framing against the
+          // document's own size is the same fallback CanvasView uses.
+          setViewport(
+            fitViewport(doc.canvas, viewSize.width > 0 && viewSize.height > 0 ? viewSize : doc.canvas),
+          )
+        }
+      >
+        Fit
+      </button>
+
+      <button
+        className="rounded border border-neutral-700 px-2 py-0.5 hover:bg-neutral-800"
         onClick={() => downloadDocument(doc)}
       >
         Save

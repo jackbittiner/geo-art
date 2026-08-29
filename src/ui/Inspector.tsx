@@ -78,6 +78,11 @@ export default function Inspector() {
         )
       })}
 
+      {/*
+        Gated on a fill: a stroke-only layer (the Moiré starter's rings) shows
+        no style card at all in Phase 1. Phase 2 adds a stroke card; until then
+        those layers have no colour controls.
+      */}
       {layer.style.fill && (
         <div className={CARD} data-testid="card-style">
           <div className={HEADING}>Style</div>
