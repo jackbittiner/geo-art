@@ -1,11 +1,14 @@
 import CanvasView from './CanvasView'
+import EmptyState from './EmptyState'
 import Inspector from './Inspector'
 import LayerList from './LayerList'
 import TopBar from './TopBar'
 import { useAutosave } from './useAutosave'
+import { useStore } from '../state/store'
 
 export default function App() {
   useAutosave()
+  const layerCount = useStore((s) => s.doc.layers.length)
   return (
     <div className="flex h-full flex-col bg-neutral-900 text-neutral-100">
       <TopBar />
@@ -14,7 +17,7 @@ export default function App() {
           <LayerList />
         </aside>
         <main data-testid="canvas-pane" className="min-w-0 flex-1">
-          <CanvasView />
+          {layerCount === 0 ? <EmptyState /> : <CanvasView />}
         </main>
         <aside data-testid="inspector-pane" className="w-80 shrink-0 border-l border-neutral-800">
           <Inspector />
