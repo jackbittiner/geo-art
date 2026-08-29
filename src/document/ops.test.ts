@@ -3,6 +3,7 @@ import { emptyDocument } from './defaults'
 import {
   addLayer, removeLayer, duplicateLayer, moveLayer, renameLayer,
   setLayerVisible, updateLayer, setShapeType, setCanvasSize,
+  setShapeField, setRepeaterField, setFillChannel,
 } from './ops'
 
 const withLayer = () => addLayer(emptyDocument(), 'halo')
@@ -163,5 +164,38 @@ describe('document ops', () => {
 
   it('sets the canvas size', () => {
     expect(setCanvasSize(emptyDocument(), 800, 600).canvas).toMatchObject({ width: 800, height: 600 })
+  })
+})
+
+describe('field setters', () => {
+  const seeded = () => addLayer(emptyDocument(), 'halo')
+
+  it('sets a shape field', () => {
+    const doc = seeded()
+    const out = setShapeField(doc, doc.layers[0].id, 'sides', 9)
+    expect(out.layers[0].shape).toMatchObject({ sides: 9 })
+  })
+
+  it('sets a repeater field by chain index', () => {
+    const doc = seeded()
+    const out = setRepeaterField(doc, doc.layers[0].id, 0, 'count', 24)
+    expect(out.layers[0].repeaters[0]).toMatchObject({ count: 24 })
+  })
+
+  it('ignores an out-of-range repeater index', () => {
+    const doc = seeded()
+    expect(setRepeaterField(doc, doc.layers[0].id, 7, 'count', 24)).toEqual(doc)
+  })
+
+  it('sets a fill channel', () => {
+    const doc = seeded()
+    const out = setFillChannel(doc, doc.layers[0].id, 'h', 42)
+    expect(out.layers[0].style.fill!.h).toBe(42)
+  })
+
+  it('leaves a layer without a fill alone', () => {
+    let doc = seeded()
+    doc = updateLayer(doc, doc.layers[0].id, (l) => ({ ...l, style: {} }))
+    expect(setFillChannel(doc, doc.layers[0].id, 'h', 42).layers[0].style.fill).toBeUndefined()
   })
 })

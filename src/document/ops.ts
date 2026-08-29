@@ -1,4 +1,5 @@
 import { defaultLayer, newId } from './defaults'
+import type { Field } from '../geometry/field'
 import type { Document, Layer, LayerId, ShapeConfig, ShapeType } from './schema'
 
 const DEFAULT_SHAPES: Record<ShapeType, ShapeConfig> = {
@@ -72,4 +73,41 @@ export function setShapeType(doc: Document, id: LayerId, type: ShapeType): Docum
 
 export function setCanvasSize(doc: Document, width: number, height: number): Document {
   return { ...doc, canvas: { ...doc.canvas, width, height } }
+}
+
+export function setShapeField(
+  doc: Document,
+  id: LayerId,
+  key: string,
+  value: Field,
+): Document {
+  return updateLayer(doc, id, (l) => ({
+    ...l,
+    shape: { ...l.shape, [key]: value } as ShapeConfig,
+  }))
+}
+
+export function setRepeaterField(
+  doc: Document,
+  id: LayerId,
+  index: number,
+  key: string,
+  value: Field,
+): Document {
+  return updateLayer(doc, id, (l) => {
+    if (index < 0 || index >= l.repeaters.length) return l
+    const repeaters = l.repeaters.map((r, i) => (i === index ? { ...r, [key]: value } : r))
+    return { ...l, repeaters }
+  })
+}
+
+export function setFillChannel(
+  doc: Document,
+  id: LayerId,
+  channel: 'l' | 'c' | 'h' | 'a',
+  value: Field,
+): Document {
+  return updateLayer(doc, id, (l) =>
+    l.style.fill ? { ...l, style: { ...l.style, fill: { ...l.style.fill, [channel]: value } } } : l,
+  )
 }
