@@ -1,5 +1,4 @@
 import { describe, it, expect } from 'vitest'
-import fc from 'fast-check'
 import { ease, EASINGS } from './easing'
 
 describe('ease', () => {
@@ -15,17 +14,20 @@ describe('ease', () => {
     expect(ease('linear', 5)).toBe(1)
   })
 
-  it('is monotonic non-decreasing', () => {
-    fc.assert(
-      fc.property(
-        fc.constantFrom(...EASINGS),
-        fc.double({ min: 0, max: 1, noNaN: true }),
-        fc.double({ min: 0, max: 1, noNaN: true }),
-        (kind, a, b) => {
-          const [lo, hi] = a <= b ? [a, b] : [b, a]
-          return ease(kind, hi) >= ease(kind, lo) - 1e-12
-        },
-      ),
-    )
+  it('is monotonic non-decreasing across a dense sweep', () => {
+    const STEPS = 1000
+    const violations: string[] = []
+    for (const kind of EASINGS) {
+      let previous = ease(kind, 0)
+      for (let i = 1; i <= STEPS; i++) {
+        const t = i / STEPS
+        const value = ease(kind, t)
+        if (value < previous - 1e-12) {
+          violations.push(`${kind} decreased at t=${t}: ${previous} -> ${value}`)
+        }
+        previous = value
+      }
+    }
+    expect(violations).toEqual([])
   })
 })
