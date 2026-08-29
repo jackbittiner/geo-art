@@ -11,6 +11,7 @@ export function addLayer(doc: Document, name = 'layer'): Document {
 }
 
 export function removeLayer(doc: Document, id: LayerId): Document {
+  if (!doc.layers.some((l) => l.id === id)) return doc
   return { ...doc, layers: doc.layers.filter((l) => l.id !== id) }
 }
 
@@ -35,6 +36,16 @@ export function moveLayer(doc: Document, id: LayerId, delta: number): Document {
   return { ...doc, layers }
 }
 
+/**
+ * Applies `fn` to the layer with `id`, or returns `doc` unchanged if no
+ * layer has that id.
+ *
+ * `fn` must not mutate its argument -- it must return a new layer (or an
+ * unchanged reference to signal no change). Every op built on updateLayer
+ * (renameLayer, setLayerVisible, setShapeType, and the field setters below)
+ * relies on this convention for its own purity; a mutating `fn` would
+ * corrupt the input document that callers still hold a reference to.
+ */
 export function updateLayer(
   doc: Document,
   id: LayerId,

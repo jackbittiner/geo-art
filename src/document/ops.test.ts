@@ -81,16 +81,25 @@ describe('document ops', () => {
   })
 
   it('leaves the document alone when removing an unknown id', () => {
+    // Reference equality, not just length: moveLayer, duplicateLayer and
+    // updateLayer all short-circuit to the same input reference on an unknown
+    // id; removeLayer's `.filter()` allocated a fresh (same-length) document
+    // regardless, so a length-only assertion would pass even without the
+    // short-circuit.
     const doc = withLayer()
-    expect(removeLayer(doc, 'nope').layers).toHaveLength(1)
+    expect(removeLayer(doc, 'nope')).toBe(doc)
   })
 
-  it('duplicates a layer with a fresh id, directly above the original', () => {
-    const doc = withLayer()
-    const dup = duplicateLayer(doc, doc.layers[0].id)
-    expect(dup.layers).toHaveLength(2)
-    expect(dup.layers[1].id).not.toBe(dup.layers[0].id)
-    expect(dup.layers[1].name).toBe('halo copy')
+  it('duplicates a layer with a fresh id, directly after the original -- not at the end', () => {
+    // Both layers in a two-layer fixture sit at index+1 == the end, so
+    // `splice(index + 1, 0, copy)` and a plain `push` are indistinguishable
+    // there. A three-layer fixture with the duplicate in the middle tells
+    // them apart.
+    let doc = addLayer(addLayer(withLayer(), 'middle'), 'top')
+    const middleId = doc.layers[1].id
+    doc = duplicateLayer(doc, middleId)
+    expect(doc.layers.map((l) => l.name)).toEqual(['halo', 'middle', 'middle copy', 'top'])
+    expect(doc.layers[2].id).not.toBe(middleId)
   })
 
   it('leaves the document alone when duplicating an unknown id', () => {
