@@ -45,7 +45,13 @@ export type Document = {
 const modulatedSchema = z.object({
   base: z.number(),
   to: z.number(),
-  source: z.enum(['index', 't', 'flatIndex', 'depth', 'radius', 'angle']),
+  // Only the three sources the engine implements (see geometry/field.ts,
+  // which throws on the rest). Accepting 'depth' | 'radius' | 'angle' here
+  // turned a bad file into a render-time crash that blanked the page; no
+  // document in the wild can contain them, so narrowing is a no-op migration
+  // that converts that crash into a clear load-time rejection. Phase 2 widens
+  // this as the engine gains support.
+  source: z.enum(['index', 't', 'flatIndex']),
   level: z.number().int().min(0).optional(),
   curve: z.enum(EASINGS),
   cycles: z.number().positive().optional(),

@@ -62,4 +62,15 @@ describe('document schema', () => {
   it('defaults maxInstances to 100000', () => {
     expect(emptyDocument().maxInstances).toBe(100_000)
   })
+  // The engine (geometry/field.ts) throws on 'depth', 'radius' and 'angle'.
+  // While the schema accepted them, such a file parsed, reached setDoc and
+  // then threw during render, blanking the page; rejecting at load time is
+  // the difference between a readable message and a dead app.
+  it.each(['depth', 'radius', 'angle'])('rejects the unimplemented source %s', (source) => {
+    const doc = emptyDocument()
+    const layer = defaultLayer('halo')
+    layer.repeaters[0].spin = { base: 0, to: 360, source, curve: 'linear' } as never
+    doc.layers.push(layer)
+    expect(documentSchema.safeParse(doc).success).toBe(false)
+  })
 })

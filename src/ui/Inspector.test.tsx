@@ -168,4 +168,45 @@ describe('Inspector', () => {
     expect(screen.queryByTestId('modulated-repeat 1-spin')).toBeNull()
     expect((screen.getByLabelText('repeat 1 spin') as HTMLInputElement).value).toBe('15')
   })
+  // Both halves of a slider that was narrower than the data it edits: the
+  // chroma descriptor capped at 0.4 while the schema and renderer allow 0.5,
+  // and the default step of 1 snapped every fractional angle. Either one
+  // rewrote a valid document the first time the slider was touched -- and the
+  // displayed value disagreed with the document before that.
+  it('renders values the schema allows but the sliders used to clamp or snap', () => {
+    const doc = useStore.getState().doc
+    const before = {
+      ...doc,
+      layers: [
+        {
+          ...doc.layers[0],
+          repeaters: [{ ...doc.layers[0].repeaters[0], startAngle: 4.5 }],
+          style: { fill: { ...doc.layers[0].style.fill!, c: 0.45 } },
+        },
+      ],
+    }
+    useStore.setState({ doc: before })
+    render(<Inspector />)
+
+    const chroma = screen.getByLabelText('fill chroma') as HTMLInputElement
+    expect(chroma.value).toBe('0.45')
+    expect(chroma.max).toBe('0.5')
+
+    const startAngle = screen.getByLabelText('repeat 1 start') as HTMLInputElement
+    expect(startAngle.value).toBe('4.5')
+    // jsdom does not run the browser's step-snapping on render, so the value
+    // above cannot catch a step of 1 on its own -- assert the step directly.
+    // (In a browser, step=1 rewrites 4.5 to 5 the first time it is dragged.)
+    expect(startAngle.step).toBe('any')
+    // Fields that really are integral keep their explicit step.
+    expect((screen.getByLabelText('repeat 1 count') as HTMLInputElement).step).toBe('1')
+    expect((screen.getByLabelText('shape sides') as HTMLInputElement).step).toBe('1')
+
+    // The readouts agree with the document, not with a clamped slider.
+    expect(screen.getByTestId('card-style').textContent).toContain('0.45')
+    expect(screen.getByTestId('card-repeater-0').textContent).toContain('4.5')
+
+    // And rendering alone wrote nothing: the document is the same object.
+    expect(useStore.getState().doc).toBe(before)
+  })
 })

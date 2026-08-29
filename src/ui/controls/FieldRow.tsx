@@ -46,7 +46,10 @@ export default function FieldRow({ scope, descriptor, value, onChange }: Props) 
     )
   }
 
-  const step = descriptor.step ?? 1
+  // 'any', not 1: a default step of 1 snapped every fractional value the
+  // schema allows -- a rotation of 4.5° became 5° the moment the slider was
+  // touched. Integral fields (sides, count) declare step: 1 for themselves.
+  const step = descriptor.step ?? 'any'
   return (
     <div className="flex items-center gap-2 py-0.5">
       <label className="w-20 shrink-0 text-neutral-400" htmlFor={id}>
