@@ -54,4 +54,18 @@ describe('store', () => {
     expect(useStore.getState().viewport.zoom).toBe(2)
     expect(useStore.getState().isDragging).toBe(true)
   })
+  // CanvasView reports its size from a ResizeObserver, which fires for reasons
+  // other than a size change. A fresh object each time would re-render every
+  // subscriber and redraw the canvas, so an unchanged size must be a no-op.
+  it('publishes the view size, and ignores a report of the same size', () => {
+    useStore.getState().setViewSize({ width: 800, height: 600 })
+    expect(useStore.getState().viewSize).toEqual({ width: 800, height: 600 })
+
+    const before = useStore.getState().viewSize
+    useStore.getState().setViewSize({ width: 800, height: 600 })
+    expect(useStore.getState().viewSize).toBe(before)
+
+    useStore.getState().setViewSize({ width: 801, height: 600 })
+    expect(useStore.getState().viewSize).toEqual({ width: 801, height: 600 })
+  })
 })
