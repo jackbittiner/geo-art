@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, act } from '@testing-library/react'
 import { describe, it, expect, beforeEach } from 'vitest'
 import TopBar from './TopBar'
 import { useStore } from '../state/store'
@@ -64,5 +64,30 @@ describe('TopBar', () => {
   it('offers a PNG export control', () => {
     render(<TopBar />)
     expect(screen.getByRole('button', { name: /Export PNG/ })).toBeDefined()
+  })
+
+  it('offers save and load controls', () => {
+    render(<TopBar />)
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDefined()
+    expect(screen.getByLabelText('Load document')).toBeDefined()
+  })
+
+  // The width field's displayed text is local component state, synced from
+  // the document by an effect (`useEffect(() => setText(...), [value])`).
+  // That effect has no direct test elsewhere, yet it is exactly what a file
+  // load depends on to refresh the displayed size -- setDoc replaces
+  // doc.canvas.width from outside the input, same as this direct
+  // useStore.setState does. If that sync effect were missing or broken, the
+  // field would keep showing the stale value after a load.
+  it('updates the displayed width when the document changes from outside the input', () => {
+    render(<TopBar />)
+    const input = screen.getByLabelText('Canvas width') as HTMLInputElement
+    expect(input.value).toBe('1200')
+
+    act(() => {
+      useStore.setState((s) => ({ doc: { ...s.doc, canvas: { ...s.doc.canvas, width: 640 } } }))
+    })
+
+    expect(input.value).toBe('640')
   })
 })

@@ -2,8 +2,10 @@ import CanvasView from './CanvasView'
 import Inspector from './Inspector'
 import LayerList from './LayerList'
 import TopBar from './TopBar'
+import { useAutosave } from './useAutosave'
 
 export default function App() {
+  useAutosave()
   return (
     <div className="flex h-full flex-col bg-neutral-900 text-neutral-100">
       <TopBar />

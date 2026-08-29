@@ -1,5 +1,6 @@
 import { useEffect, useState, type ChangeEvent } from 'react'
 import { setCanvasSize } from '../document/ops'
+import { downloadDocument, readDocumentFile } from '../document/serialize'
 import { downloadPng } from '../render/exportPng'
 import { useStore } from '../state/store'
 import { useEvaluation } from './useEvaluation'
@@ -33,6 +34,7 @@ function useSizeField(value: number, onCommit: (n: number) => void) {
 export default function TopBar() {
   const doc = useStore((s) => s.doc)
   const apply = useStore((s) => s.apply)
+  const setDoc = useStore((s) => s.setDoc)
   const result = useEvaluation()
 
   const width = useSizeField(doc.canvas.width, (w) => apply((d) => setCanvasSize(d, w, d.canvas.height)))
@@ -73,6 +75,33 @@ export default function TopBar() {
 
       <button
         className="ml-auto rounded border border-neutral-700 px-2 py-0.5 hover:bg-neutral-800"
+        onClick={() => downloadDocument(doc)}
+      >
+        Save
+      </button>
+
+      <label className="cursor-pointer rounded border border-neutral-700 px-2 py-0.5 hover:bg-neutral-800">
+        Load
+        <input
+          aria-label="Load document"
+          type="file"
+          accept="application/json"
+          className="hidden"
+          onChange={async (e) => {
+            const file = e.target.files?.[0]
+            if (!file) return
+            try {
+              setDoc(await readDocumentFile(file))
+            } catch (error) {
+              alert(error instanceof Error ? error.message : 'Could not load that file.')
+            }
+            e.target.value = ''
+          }}
+        />
+      </label>
+
+      <button
+        className="rounded border border-neutral-700 px-2 py-0.5 hover:bg-neutral-800"
         onClick={() => void downloadPng(doc, 2)}
       >
         Export PNG 2×

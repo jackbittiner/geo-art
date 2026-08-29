@@ -1,0 +1,103 @@
+// @vitest-environment jsdom
+import { render, act } from '@testing-library/react'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { useAutosave } from './useAutosave'
+import { useStore } from '../state/store'
+import { emptyDocument, defaultLayer } from '../document/defaults'
+import { serialize } from '../document/serialize'
+
+const KEY = 'geo-art:autosave'
+
+function Harness() {
+  useAutosave()
+  return null
+}
+
+describe('useAutosave', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    useStore.setState({ doc: emptyDocument(), selectedLayerId: null })
+  })
+
+  it('restores a saved document on mount', () => {
+    const saved = emptyDocument()
+    saved.layers.push(defaultLayer('restored'))
+    localStorage.setItem(KEY, serialize(saved))
+
+    render(<Harness />)
+
+    expect(useStore.getState().doc.layers.map((l) => l.name)).toEqual(['restored'])
+  })
+
+  it('saves the document to localStorage on change', () => {
+    render(<Harness />)
+
+    const next = emptyDocument()
+    next.layers.push(defaultLayer('edited'))
+    act(() => {
+      useStore.setState({ doc: next })
+    })
+
+    const saved = localStorage.getItem(KEY)
+    expect(saved).not.toBeNull()
+    expect(JSON.parse(saved!).layers.map((l: { name: string }) => l.name)).toEqual(['edited'])
+  })
+
+  it('discards an unreadable saved document instead of crashing', () => {
+    localStorage.setItem(KEY, '{not json')
+
+    expect(() => render(<Harness />)).not.toThrow()
+    expect(localStorage.getItem(KEY)).toBeNull()
+  })
+
+  it('does not crash when localStorage.setItem throws (e.g. quota exceeded)', () => {
+    render(<Harness />)
+
+    const spy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('QuotaExceededError')
+    })
+
+    const next = emptyDocument()
+    next.layers.push(defaultLayer('too-big'))
+    expect(() => {
+      act(() => {
+        useStore.setState({ doc: next })
+      })
+    }).not.toThrow()
+
+    spy.mockRestore()
+  })
+
+  // Both effects fire on the same mount. If the save effect writes on that
+  // first pass, it clobbers the saved document with the still-default store
+  // state before the restore effect's setDoc has taken effect -- a real
+  // data-loss window even though a later re-render papers over the visible
+  // symptom (the corrected value gets written right after, once the restore
+  // takes effect and this component re-renders). Guarding the save effect's
+  // first run with its own ref closes the window entirely.
+  //
+  // NB: spying via `localStorage.setItem = vi.fn()` does not work in jsdom --
+  // assigning to a property of the Storage object is itself a storage write
+  // (per the Web Storage API), so the assignment silently no-ops as far as
+  // interception goes. `vi.spyOn(Storage.prototype, 'setItem')` is the way
+  // that actually observes every call.
+  it('does not overwrite a saved document with the pre-restore default on mount', () => {
+    const saved = emptyDocument()
+    saved.layers.push(defaultLayer('must-survive'))
+    localStorage.setItem(KEY, serialize(saved))
+
+    const spy = vi.spyOn(Storage.prototype, 'setItem')
+    render(<Harness />)
+
+    const writesToKey = spy.mock.calls.filter(([key]) => key === KEY)
+    const everWroteEmptyLayers = writesToKey.some(
+      ([, value]) => JSON.parse(value).layers.length === 0,
+    )
+    spy.mockRestore()
+
+    expect(everWroteEmptyLayers).toBe(false)
+    expect(JSON.parse(localStorage.getItem(KEY)!).layers.map((l: { name: string }) => l.name)).toEqual([
+      'must-survive',
+    ])
+  })
+})
