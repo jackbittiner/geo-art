@@ -88,4 +88,21 @@ describe('ellipse', () => {
       expect(Math.abs(arrivingPole ? arriving.y : arriving.x)).toBeLessThan(1e-9)
     })
   })
+
+  it('places each segment midpoint exactly on the ellipse, which pins KAPPA', () => {
+    const rx = 20
+    const ry = 10
+    const cubics = ellipse(rx, ry, 0).segments.filter(
+      (s): s is Extract<Segment, { c: 'C' }> => s.c === 'C',
+    )
+    const startOf = (i: number) => (i === 0 ? { x: 0, y: -ry } : cubics[i - 1].p)
+
+    cubics.forEach((seg, i) => {
+      const p0 = startOf(i)
+      // A cubic Bezier at t = 0.5 is (P0 + 3*P1 + 3*P2 + P3) / 8.
+      const mx = (p0.x + 3 * seg.c1.x + 3 * seg.c2.x + seg.p.x) / 8
+      const my = (p0.y + 3 * seg.c1.y + 3 * seg.c2.y + seg.p.y) / 8
+      expect((mx / rx) ** 2 + (my / ry) ** 2).toBeCloseTo(1, 12)
+    })
+  })
 })
