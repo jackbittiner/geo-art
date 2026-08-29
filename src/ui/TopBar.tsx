@@ -1,4 +1,5 @@
 import { setCanvasSize } from '../document/ops'
+import { downloadPng } from '../render/exportPng'
 import { useStore } from '../state/store'
 import { useEvaluation } from './useEvaluation'
 
@@ -42,6 +43,13 @@ export default function TopBar() {
           truncated at {doc.maxInstances.toLocaleString()}
         </span>
       )}
+
+      <button
+        className="ml-auto rounded border border-neutral-700 px-2 py-0.5 hover:bg-neutral-800"
+        onClick={() => void downloadPng(doc, 2)}
+      >
+        Export PNG 2×
+      </button>
     </header>
   )
 }

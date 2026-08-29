@@ -37,4 +37,9 @@ describe('TopBar', () => {
     render(<TopBar />)
     expect(screen.queryByTestId('truncation-warning')).toBeNull()
   })
+
+  it('offers a PNG export control', () => {
+    render(<TopBar />)
+    expect(screen.getByRole('button', { name: /Export PNG/ })).toBeDefined()
+  })
 })
