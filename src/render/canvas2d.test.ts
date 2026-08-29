@@ -49,6 +49,22 @@ describe('Canvas2DRenderer', () => {
     expect(ctx.fillRect).toHaveBeenCalledWith(0, 0, 200, 100)
   })
 
+  // clearRect/fillRect being called with the right rectangle says nothing
+  // about the colour: the background could be painted magenta and every other
+  // test would still pass. fillStyle is mutable and reassigned per instance,
+  // so it has to be captured inside the fillRect call, exactly as the
+  // painter-order test captures it inside fill.
+  it('paints the background in the scene background colour', () => {
+    const ctx = fakeContext()
+    let painted: string | null = null
+    ctx.fillRect.mockImplementation(() => {
+      painted = ctx.fillStyle
+    })
+    const background = { l: 0.62, c: 0.18, h: 280, a: 0.35 }
+    new Canvas2DRenderer(ctx, () => ({})).draw(scene({ background }), DEFAULT_VIEWPORT)
+    expect(painted).toBe('oklch(62% 0.18 280 / 0.35)')
+  })
+
   it('fills once per instance', () => {
     const ctx = fakeContext()
     const layers = [{ instances: [instance(), instance(), instance()] }]

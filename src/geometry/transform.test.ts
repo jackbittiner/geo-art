@@ -55,7 +55,14 @@ describe('transform', () => {
 
   // --- property-based ---
 
-  const arbComponent = fc.double({ min: -100, max: 100, noNaN: true })
+  /**
+   * fc.double({ min, max }) samples the float64 bit space rather than the
+   * interval -- almost every sample lands in the first decile and barely any
+   * in the interior -- so an algebraic property fed that way is hardly
+   * exercised at all. An integer scaled down covers [-100, 100] uniformly at a
+   * resolution of 0.001, which is the convention used elsewhere in the project.
+   */
+  const arbComponent = fc.integer({ min: -100_000, max: 100_000 }).map((n) => n / 1000)
 
   /**
    * Well-conditioned matrices only. A near-singular matrix amplifies float64
