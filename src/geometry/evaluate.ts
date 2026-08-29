@@ -45,7 +45,12 @@ function resolveStyle(style: StyleConfig, ctx: EvalContext): ResolvedStyle {
   return out
 }
 
-/** Expands a layer's repeater chain, stopping at `budget` placements. */
+/**
+ * Expands a layer's repeater chain, never materialising more than `budget`
+ * placements at any point — a repeater is asked to emit at most the
+ * remaining budget, so a resolved copy count in the millions never gets
+ * fully built before being discarded.
+ */
 function expandChain(layer: Layer, budget: number): { nodes: Placement[]; truncated: boolean } {
   let nodes: Placement[] = [{ transform: IDENTITY, ctx: rootContext() }]
   let truncated = false
@@ -53,22 +58,30 @@ function expandChain(layer: Layer, budget: number): { nodes: Placement[]; trunca
   for (const config of layer.repeaters) {
     const repeater = getRepeater(config.type)
     const next: Placement[] = []
-    outer: for (const node of nodes) {
-      for (const child of repeater.expand(config, node.ctx)) {
-        if (next.length >= budget) {
-          truncated = true
-          break outer
-        }
+    for (const node of nodes) {
+      const remaining = budget - next.length
+      if (remaining <= 0) {
+        truncated = true
+        break
+      }
+      const children = repeater.expand(config, node.ctx, remaining)
+      // A repeater's contract: every child's `ctx.counts` records the *full*
+      // intended count at the level it just added, even when it emitted
+      // fewer children than that to respect `limit`. Comparing the two
+      // tells us whether this node's contribution was actually cut short
+      // (as opposed to a resolved count that was simply smaller than the
+      // remaining budget, which is not truncation).
+      if (children.length > 0) {
+        const level = children[0].ctx.counts.length - 1
+        if (children.length < children[0].ctx.counts[level]) truncated = true
+      }
+      for (const child of children) {
         next.push({ transform: compose(node.transform, child.transform), ctx: child.ctx })
       }
     }
     nodes = next
   }
 
-  if (nodes.length > budget) {
-    nodes = nodes.slice(0, budget)
-    truncated = true
-  }
   return { nodes, truncated }
 }
 

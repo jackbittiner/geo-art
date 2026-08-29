@@ -35,6 +35,7 @@ describe('evaluate', () => {
     expect(result.totalInstances).toBe(0)
     expect(result.layers).toHaveLength(1)
     expect(result.layers[0].instances).toEqual([])
+    expect(result.truncated).toBe(false)
   })
 
   it('reuses one Path object when the shape is constant', () => {
@@ -101,6 +102,20 @@ describe('evaluate', () => {
 
   it('does not report truncation when it fits', () => {
     expect(evaluate(docWith()).truncated).toBe(false)
+  })
+
+  it('does not materialise placements beyond the budget', () => {
+    const start = performance.now()
+    const result = evaluate(
+      docWith((d) => {
+        d.maxInstances = 10
+        d.layers[0].repeaters[0].count = 10_000_000
+      }),
+    )
+    expect(result.totalInstances).toBe(10)
+    expect(result.truncated).toBe(true)
+    // Ten million Placement objects would take seconds and hundreds of MB.
+    expect(performance.now() - start).toBeLessThan(1000)
   })
 
   it('sets flatIndex and total on the context used for styling', () => {

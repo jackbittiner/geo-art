@@ -10,9 +10,14 @@ export type Placement = {
 
 export interface Repeater<C> {
   type: string
-  expand(config: C, parent: EvalContext): Placement[]
-  /** Cheap upper bound on copy count, for the explosion guard. */
-  estimate(config: C): number
+  /**
+   * Expands one node into its children, emitting at most `limit` placements
+   * even when the resolved copy count is larger. `limit` is required so the
+   * explosion guard cannot be bypassed by a repeater that forgets to honour
+   * it: this is the only truncation mechanism, not a fallback alongside a
+   * separate size estimate.
+   */
+  expand(config: C, parent: EvalContext, limit: number): Placement[]
 }
 
 export type RadialConfig = {
