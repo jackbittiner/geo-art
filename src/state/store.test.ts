@@ -39,6 +39,15 @@ describe('store', () => {
     expect(useStore.getState().selectedLayerId).toBeNull()
   })
 
+  it('keeps the selection when a different layer is removed', () => {
+    useStore.getState().addAndSelectLayer('first')
+    useStore.getState().addAndSelectLayer('second')
+    const [first, second] = useStore.getState().doc.layers
+    useStore.getState().select(second.id)
+    useStore.getState().apply((d) => removeLayer(d, first.id))
+    expect(useStore.getState().selectedLayerId).toBe(second.id)
+  })
+
   it('tracks viewport and drag state', () => {
     useStore.getState().setViewport({ pan: { x: 4, y: 5 }, zoom: 2 })
     useStore.getState().setDragging(true)
