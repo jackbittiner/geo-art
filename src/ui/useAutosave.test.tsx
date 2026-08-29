@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import { render, act } from '@testing-library/react'
 import { StrictMode } from 'react'
-import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { useAutosave } from './useAutosave'
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest'
+import { AUTOSAVE_DEBOUNCE_MS, useAutosave } from './useAutosave'
 import { useStore } from '../state/store'
 import { emptyDocument, defaultLayer } from '../document/defaults'
 import { serialize } from '../document/serialize'
@@ -14,10 +14,25 @@ function Harness() {
   return null
 }
 
+/**
+ * Writes are debounced (see AUTOSAVE_DEBOUNCE_MS), so every assertion about
+ * what reached storage has to run the clock forward first.
+ */
+function flushDebounce() {
+  act(() => {
+    vi.advanceTimersByTime(AUTOSAVE_DEBOUNCE_MS)
+  })
+}
+
 describe('useAutosave', () => {
   beforeEach(() => {
+    vi.useFakeTimers()
     localStorage.clear()
     useStore.setState({ doc: emptyDocument(), selectedLayerId: null })
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
   })
 
   it('restores a saved document on mount', () => {
@@ -38,6 +53,7 @@ describe('useAutosave', () => {
     act(() => {
       useStore.setState({ doc: next })
     })
+    flushDebounce()
 
     const saved = localStorage.getItem(KEY)
     expect(saved).not.toBeNull()
@@ -64,6 +80,7 @@ describe('useAutosave', () => {
       act(() => {
         useStore.setState({ doc: next })
       })
+      flushDebounce()
     }).not.toThrow()
 
     spy.mockRestore()
@@ -90,6 +107,7 @@ describe('useAutosave', () => {
 
     const spy = vi.spyOn(Storage.prototype, 'setItem')
     render(<Harness />)
+    flushDebounce()
 
     const writesToKey = spy.mock.calls.filter(([key]) => key === KEY)
     const everWroteEmptyLayers = writesToKey.some(
@@ -122,6 +140,7 @@ describe('useAutosave', () => {
         <Harness />
       </StrictMode>,
     )
+    flushDebounce()
 
     const writesToKey = spy.mock.calls.filter(([key]) => key === KEY)
     const everWroteEmptyLayers = writesToKey.some(
@@ -154,9 +173,66 @@ describe('useAutosave', () => {
     act(() => {
       useStore.setState({ doc: next })
     })
+    flushDebounce()
 
     const saved = localStorage.getItem(KEY)
     expect(saved).not.toBeNull()
     expect(JSON.parse(saved!).layers.map((l: { name: string }) => l.name)).toEqual(['first-edit'])
+  })
+  // A slider drag emits a document change per pointermove. Undebounced, each
+  // one paid a full JSON.stringify plus a synchronous localStorage write on
+  // the interactive edit path; only the last document in a burst matters.
+  it('writes once for a burst of edits, not once per edit', () => {
+    render(<Harness />)
+
+    const spy = vi.spyOn(Storage.prototype, 'setItem')
+    for (let i = 1; i <= 20; i++) {
+      const next = emptyDocument()
+      next.layers.push(defaultLayer(`edit-${i}`))
+      act(() => {
+        useStore.setState({ doc: next })
+      })
+      act(() => {
+        vi.advanceTimersByTime(10)
+      })
+    }
+    expect(spy.mock.calls.filter(([key]) => key === KEY)).toHaveLength(0)
+
+    flushDebounce()
+
+    const writes = spy.mock.calls.filter(([key]) => key === KEY)
+    spy.mockRestore()
+
+    expect(writes).toHaveLength(1)
+    expect(JSON.parse(localStorage.getItem(KEY)!).layers.map((l: { name: string }) => l.name)).toEqual([
+      'edit-20',
+    ])
+  })
+
+  // Debouncing must not turn "edit, then close the tab" into a lost edit.
+  it('flushes a pending write on beforeunload', () => {
+    render(<Harness />)
+
+    const next = emptyDocument()
+    next.layers.push(defaultLayer('closing-time'))
+    act(() => {
+      useStore.setState({ doc: next })
+    })
+    expect(localStorage.getItem(KEY)).toBeNull()
+
+    act(() => {
+      window.dispatchEvent(new Event('beforeunload'))
+    })
+
+    expect(JSON.parse(localStorage.getItem(KEY)!).layers.map((l: { name: string }) => l.name)).toEqual([
+      'closing-time',
+    ])
+
+    // And the flush is not then duplicated when the debounce timer fires.
+    const spy = vi.spyOn(Storage.prototype, 'setItem')
+    flushDebounce()
+    const writes = spy.mock.calls.filter(([key]) => key === KEY)
+    spy.mockRestore()
+    expect(writes).toHaveLength(0)
   })
 })

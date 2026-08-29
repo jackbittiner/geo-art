@@ -34,8 +34,15 @@ export default function CanvasView() {
       const dpr = window.devicePixelRatio || 1
       const width = canvas.clientWidth || doc.canvas.width
       const height = canvas.clientHeight || doc.canvas.height
-      canvas.width = Math.round(width * dpr)
-      canvas.height = Math.round(height * dpr)
+      const deviceWidth = Math.round(width * dpr)
+      const deviceHeight = Math.round(height * dpr)
+      // Assigning canvas.width/height reallocates and clears the backing store
+      // even when the value is unchanged, so only do it on an actual resize --
+      // a slider drag redraws on every pointermove and must not pay for that.
+      if (canvas.width !== deviceWidth || canvas.height !== deviceHeight) {
+        canvas.width = deviceWidth
+        canvas.height = deviceHeight
+      }
       renderer.resize(width, height, dpr)
       renderer.draw({ ...buildScene(doc, result), width, height }, viewport)
     })

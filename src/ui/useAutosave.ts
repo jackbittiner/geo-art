@@ -3,8 +3,9 @@ import { deserialize, serialize } from '../document/serialize'
 import { useStore } from '../state/store'
 
 const KEY = 'geo-art:autosave'
+export const AUTOSAVE_DEBOUNCE_MS = 300
 
-/** Restores the last document on mount, then saves on every change. */
+/** Restores the last document on mount, then saves changes on a trailing debounce. */
 export function useAutosave(): void {
   const doc = useStore((s) => s.doc)
   const setDoc = useStore((s) => s.setDoc)
@@ -33,12 +34,31 @@ export function useAutosave(): void {
     }
   }, [setDoc])
 
+  // Debounced, because this runs on *every* document change and a slider drag
+  // emits one per pointermove: JSON.stringify plus a synchronous localStorage
+  // write on each of those is the most expensive thing on the interactive edit
+  // path. The trailing edge is enough -- only the last document in a burst is
+  // worth persisting -- but a burst cut short by the tab closing would lose the
+  // pending write, so `beforeunload` flushes it.
   useEffect(() => {
     if (doc === mountDoc.current) return
-    try {
-      localStorage.setItem(KEY, serialize(doc))
-    } catch {
-      // Storage full or unavailable — autosave is a convenience, not a guarantee.
+
+    let pending = true
+    const write = () => {
+      if (!pending) return
+      pending = false
+      try {
+        localStorage.setItem(KEY, serialize(doc))
+      } catch {
+        // Storage full or unavailable — autosave is a convenience, not a guarantee.
+      }
+    }
+
+    const timer = setTimeout(write, AUTOSAVE_DEBOUNCE_MS)
+    window.addEventListener('beforeunload', write)
+    return () => {
+      clearTimeout(timer)
+      window.removeEventListener('beforeunload', write)
     }
   }, [doc])
 }
