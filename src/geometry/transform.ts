@@ -43,9 +43,11 @@ export function determinant(m: Mat2D): number {
 
 export function invert(m: Mat2D): Mat2D {
   const det = determinant(m)
-  if (det === 0) throw new Error('Matrix is not invertible')
+  if (!Number.isFinite(det) || det === 0) throw new Error('Matrix is not invertible')
   const [a, b, c, d, e, f] = m
-  return [d / det, -b / det, -c / det, a / det, (c * f - d * e) / det, (b * e - a * f) / det]
+  const out: Mat2D = [d / det, -b / det, -c / det, a / det, (c * f - d * e) / det, (b * e - a * f) / det]
+  if (!out.every(Number.isFinite)) throw new Error('Matrix is not invertible')
+  return out
 }
 
 export const degToRad = (deg: number): number => (deg * Math.PI) / 180

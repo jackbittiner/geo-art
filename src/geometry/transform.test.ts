@@ -35,6 +35,14 @@ describe('transform', () => {
     expect(closeTo(determinant(rotate(0.7)), 1)).toBe(true)
   })
 
+  it('invert throws on singular matrix', () => {
+    expect(() => invert([1, 0, 0, 0, 0, 0])).toThrow('Matrix is not invertible')
+  })
+
+  it('invert throws on linearly dependent rows', () => {
+    expect(() => invert([1, 2, 1, 2, 0, 0])).toThrow('Matrix is not invertible')
+  })
+
   // --- property-based ---
 
   const arbComponent = fc.double({ min: -100, max: 100, noNaN: true })
