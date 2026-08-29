@@ -1,7 +1,18 @@
 // @vitest-environment jsdom
 import { render, screen } from '@testing-library/react'
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import App from './App'
+
+beforeEach(() => {
+  const ctx = {
+    fillStyle: '', strokeStyle: '', lineWidth: 1,
+    setTransform: vi.fn(), clearRect: vi.fn(), fillRect: vi.fn(),
+    fill: vi.fn(), stroke: vi.fn(),
+  }
+  vi.stubGlobal('Path2D', class { moveTo() {} lineTo() {} bezierCurveTo() {} closePath() {} })
+  vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} })
+  HTMLCanvasElement.prototype.getContext = vi.fn(() => ctx) as never
+})
 
 describe('App', () => {
   it('renders the three panes', () => {

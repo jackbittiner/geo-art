@@ -1,3 +1,4 @@
+import CanvasView from './CanvasView'
 import Inspector from './Inspector'
 import LayerList from './LayerList'
 import TopBar from './TopBar'
@@ -10,7 +11,9 @@ export default function App() {
         <aside data-testid="layers-pane" className="w-52 shrink-0 border-r border-neutral-800">
           <LayerList />
         </aside>
-        <main data-testid="canvas-pane" className="min-w-0 flex-1" />
+        <main data-testid="canvas-pane" className="min-w-0 flex-1">
+          <CanvasView />
+        </main>
         <aside data-testid="inspector-pane" className="w-80 shrink-0 border-l border-neutral-800">
           <Inspector />
         </aside>
