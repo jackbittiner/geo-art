@@ -47,6 +47,14 @@ describe('document schema', () => {
     expect(documentSchema.safeParse(doc).success).toBe(false)
   })
 
+  it('gives each document its own background object', () => {
+    const a = emptyDocument()
+    const b = emptyDocument()
+    expect(a.canvas.background).not.toBe(b.canvas.background)
+    a.canvas.background.l = 0.1
+    expect(b.canvas.background.l).toBe(0.98)
+  })
+
   it('gives every new layer a distinct id', () => {
     expect(defaultLayer('a').id).not.toBe(defaultLayer('b').id)
   })

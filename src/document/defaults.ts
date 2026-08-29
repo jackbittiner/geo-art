@@ -10,7 +10,7 @@ export function emptyDocument(): Document {
   return {
     version: 1,
     seed: 8814,
-    canvas: { width: 1200, height: 1200, background: WHITE_BACKGROUND },
+    canvas: { width: 1200, height: 1200, background: { ...WHITE_BACKGROUND } },
     layers: [],
     maxInstances: 100_000,
   }

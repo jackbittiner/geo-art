@@ -53,13 +53,20 @@ const modulatedSchema = z.object({
 
 const fieldSchema = z.union([z.number(), modulatedSchema])
 
-/** A Field constrained to a range when it is a plain number. */
+/**
+ * A Field constrained to a range when it is a plain number. The bound applies
+ * only to the literal branch — a Modulated field (e.g. { base: 999, to: -50 })
+ * is not range-checked here, since the renderer clamps its resolved value
+ * regardless. Do not read this as a guarantee that a Modulated field's base/to
+ * stay in range.
+ */
 const boundedField = (min: number, max: number) =>
   z.union([z.number().min(min).max(max), modulatedSchema])
 
 const colourSchema = z.object({
   l: boundedField(0, 1),
   c: boundedField(0, 0.5),
+  // Hue is deliberately unbounded: degrees wrap, so there is no invalid range.
   h: fieldSchema,
   a: boundedField(0, 1),
 })
