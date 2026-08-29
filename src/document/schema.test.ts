@@ -37,6 +37,16 @@ describe('document schema', () => {
     expect(documentSchema.safeParse(doc).success).toBe(false)
   })
 
+  it('accepts chroma up to the renderer clamp and rejects beyond it', () => {
+    const doc = emptyDocument()
+    const layer = defaultLayer('halo')
+    doc.layers.push(layer)
+    layer.style.fill!.c = 0.5
+    expect(documentSchema.safeParse(doc).success).toBe(true)
+    layer.style.fill!.c = 0.51
+    expect(documentSchema.safeParse(doc).success).toBe(false)
+  })
+
   it('gives every new layer a distinct id', () => {
     expect(defaultLayer('a').id).not.toBe(defaultLayer('b').id)
   })

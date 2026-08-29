@@ -59,7 +59,7 @@ const boundedField = (min: number, max: number) =>
 
 const colourSchema = z.object({
   l: boundedField(0, 1),
-  c: boundedField(0, 0.4),
+  c: boundedField(0, 0.5),
   h: fieldSchema,
   a: boundedField(0, 1),
 })
