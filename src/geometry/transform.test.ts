@@ -43,6 +43,16 @@ describe('transform', () => {
     expect(() => invert([1, 2, 1, 2, 0, 0])).toThrow('Matrix is not invertible')
   })
 
+  it('throws when the determinant overflows to Infinity', () => {
+    // det = 1e200 * 1e200 - 0 = Infinity (not zero, so det === 0 does not catch it)
+    expect(() => invert([1e200, 0, 0, 1e200, 0, 0])).toThrow('Matrix is not invertible')
+  })
+
+  it('throws when the computed inverse overflows', () => {
+    // det = 1e-308 (finite and nonzero), but inverse components overflow to Infinity
+    expect(() => invert([1e-308, 0, 0, 1, 100, 0])).toThrow('Matrix is not invertible')
+  })
+
   // --- property-based ---
 
   const arbComponent = fc.double({ min: -100, max: 100, noNaN: true })
