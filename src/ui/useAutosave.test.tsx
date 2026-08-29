@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { render, act } from '@testing-library/react'
+import { StrictMode } from 'react'
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { useAutosave } from './useAutosave'
 import { useStore } from '../state/store'
@@ -73,8 +74,9 @@ describe('useAutosave', () => {
   // state before the restore effect's setDoc has taken effect -- a real
   // data-loss window even though a later re-render papers over the visible
   // symptom (the corrected value gets written right after, once the restore
-  // takes effect and this component re-renders). Guarding the save effect's
-  // first run with its own ref closes the window entirely.
+  // takes effect and this component re-renders). Guarding against this with
+  // an identity check against the mount-time document closes the window
+  // entirely, regardless of how many times the effect is invoked.
   //
   // NB: spying via `localStorage.setItem = vi.fn()` does not work in jsdom --
   // assigning to a property of the Storage object is itself a storage write
@@ -99,5 +101,62 @@ describe('useAutosave', () => {
     expect(JSON.parse(localStorage.getItem(KEY)!).layers.map((l: { name: string }) => l.name)).toEqual([
       'must-survive',
     ])
+  })
+
+  // The app always mounts inside <StrictMode> (see src/main.tsx), which in
+  // development invokes every effect twice on mount (setup -> cleanup ->
+  // setup) before the first invocation's state update commits. A run-counting
+  // guard (e.g. "skip the first invocation") is consumed by the first
+  // synthetic invocation and then runs for real on the *second* one, which
+  // still sees the pre-restore default `doc` -- reproducing the exact clobber
+  // the guard was meant to prevent. This is why the guard has to be an
+  // identity check against the document present at mount, not a counter.
+  it('does not overwrite a saved document with the pre-restore default on mount, under StrictMode', () => {
+    const saved = emptyDocument()
+    saved.layers.push(defaultLayer('must-survive'))
+    localStorage.setItem(KEY, serialize(saved))
+
+    const spy = vi.spyOn(Storage.prototype, 'setItem')
+    render(
+      <StrictMode>
+        <Harness />
+      </StrictMode>,
+    )
+
+    const writesToKey = spy.mock.calls.filter(([key]) => key === KEY)
+    const everWroteEmptyLayers = writesToKey.some(
+      ([, value]) => JSON.parse(value).layers.length === 0,
+    )
+    spy.mockRestore()
+
+    expect(everWroteEmptyLayers).toBe(false)
+    expect(JSON.parse(localStorage.getItem(KEY)!).layers.map((l: { name: string }) => l.name)).toEqual([
+      'must-survive',
+    ])
+  })
+
+  // The behaviour a guard could over-correct into breaking: with nothing
+  // saved, autosave must still persist the *first* genuine edit -- not skip
+  // it because it happens to be the first change the effect ever sees, and
+  // not require a second edit before anything is written. Rendered under
+  // StrictMode since that's how the app actually mounts.
+  it('saves on the first genuine edit, under StrictMode, when nothing was saved', () => {
+    render(
+      <StrictMode>
+        <Harness />
+      </StrictMode>,
+    )
+
+    expect(localStorage.getItem(KEY)).toBeNull()
+
+    const next = emptyDocument()
+    next.layers.push(defaultLayer('first-edit'))
+    act(() => {
+      useStore.setState({ doc: next })
+    })
+
+    const saved = localStorage.getItem(KEY)
+    expect(saved).not.toBeNull()
+    expect(JSON.parse(saved!).layers.map((l: { name: string }) => l.name)).toEqual(['first-edit'])
   })
 })

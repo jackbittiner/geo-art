@@ -9,14 +9,17 @@ export function useAutosave(): void {
   const doc = useStore((s) => s.doc)
   const setDoc = useStore((s) => s.setDoc)
   const restored = useRef(false)
-  // Both effects below run in the same first pass. Without this guard, the
-  // save effect would write the still-default `doc` to localStorage before
-  // the restore effect's setDoc(deserialize(saved)) has taken effect,
-  // transiently clobbering the saved copy. A later re-render papers over the
-  // visible symptom, but the write actually happened, so it is a real
-  // data-loss window under a slightly different render order. Skipping the
-  // save effect's first run closes it.
-  const firstSave = useRef(true)
+  // The document present at mount. Nothing may be written to storage until
+  // something has replaced it -- a restore, or a user edit. A run-counting
+  // guard ("skip the first invocation") cannot express this safely: under
+  // <StrictMode> (see src/main.tsx), React invokes every effect twice on
+  // mount before the first invocation's state update commits, so the first
+  // synthetic invocation consumes a one-shot guard and the second runs for
+  // real while `doc` is still the pre-restore default -- the exact clobber
+  // this guard exists to prevent. An identity check against the mount-time
+  // document is immune to that, because it doesn't depend on how many times
+  // the effect fires, only on whether the document has actually changed.
+  const mountDoc = useRef(doc)
 
   useEffect(() => {
     if (restored.current) return
@@ -31,10 +34,7 @@ export function useAutosave(): void {
   }, [setDoc])
 
   useEffect(() => {
-    if (firstSave.current) {
-      firstSave.current = false
-      return
-    }
+    if (doc === mountDoc.current) return
     try {
       localStorage.setItem(KEY, serialize(doc))
     } catch {
