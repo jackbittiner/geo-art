@@ -49,11 +49,22 @@ describe('ellipse', () => {
     expect(b.h).toBeCloseTo(20, 6)
   })
 
-  it('rotating a circle by any angle leaves its bounding box unchanged', () => {
+  it('ignores rotation for a circle, which is rotationally symmetric', () => {
     fc.assert(
       fc.property(fc.double({ min: 0, max: 360, noNaN: true }), (deg) => {
         const b = bbox(ellipse(15, 15, deg))
         return Math.abs(b.w - 30) < 1e-6 && Math.abs(b.h - 30) < 1e-6
+      }),
+    )
+  })
+
+  it('rotates an ellipse rigidly: on-curve points keep their radii at any angle', () => {
+    fc.assert(
+      fc.property(fc.double({ min: -360, max: 360, noNaN: true }), (deg) => {
+        const onCurve = ellipse(20, 10, deg).segments.flatMap((s) => (s.c === 'C' ? [s.p] : []))
+        const radii = onCurve.map((p) => Math.hypot(p.x, p.y)).sort((a, b) => a - b)
+        const expected = [10, 10, 20, 20]
+        return radii.length === 4 && radii.every((r, i) => Math.abs(r - expected[i]) < 1e-9)
       }),
     )
   })
