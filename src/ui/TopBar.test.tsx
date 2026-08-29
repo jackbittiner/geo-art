@@ -27,6 +27,29 @@ describe('TopBar', () => {
     expect(useStore.getState().doc.canvas.width).toBe(800)
   })
 
+  it('keeps a cleared canvas width field empty instead of snapping to 1', () => {
+    render(<TopBar />)
+    const input = screen.getByLabelText('Canvas width') as HTMLInputElement
+    fireEvent.change(input, { target: { value: '' } })
+    expect(input.value).toBe('')
+    expect(useStore.getState().doc.canvas.width).toBe(1200)
+  })
+
+  it('does not corrupt a value typed after clearing the width field', () => {
+    // Simulates real keystrokes: each new value is the field's *actual*
+    // rendered content plus one appended digit, not a hardcoded string. If
+    // clearing the field snapped it back to "1" (the bug), the next digit
+    // would append to that "1" instead of to an empty field.
+    render(<TopBar />)
+    const input = screen.getByLabelText('Canvas width') as HTMLInputElement
+    fireEvent.change(input, { target: { value: '' } })
+    for (const digit of '500') {
+      fireEvent.change(input, { target: { value: input.value + digit } })
+    }
+    expect(input.value).toBe('500')
+    expect(useStore.getState().doc.canvas.width).toBe(500)
+  })
+
   it('warns when the instance budget truncates', () => {
     useStore.setState((s) => ({ doc: { ...s.doc, maxInstances: 5 } }))
     render(<TopBar />)
