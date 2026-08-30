@@ -1,9 +1,13 @@
 import { useState, type ReactNode } from 'react'
 import { DEFAULT_FILL, DEFAULT_STROKE } from '../document/defaults'
 import {
+  addRepeater,
+  moveRepeater,
+  removeRepeater,
   setFill,
   setFillChannel,
   setRepeaterField,
+  setRepeaterType,
   setShapeField,
   setShapeType,
   setStroke,
@@ -12,6 +16,7 @@ import {
 } from '../document/ops'
 import type { Colour, LayerId, ShapeType } from '../document/schema'
 import { isModulated, type Field } from '../geometry/field'
+import type { RepeaterType } from '../geometry/repeaters'
 import { colourToCss } from '../render/colour'
 import { useStore } from '../state/store'
 import FieldRow from './controls/FieldRow'
@@ -22,6 +27,22 @@ const CARD = 'border-b border-neutral-800 px-3 py-2'
 const HEADING = 'mb-1 flex items-center text-[10px] font-semibold uppercase tracking-wider text-neutral-500'
 const TOGGLE_ON = 'border-sky-500 bg-sky-500/20 text-sky-300'
 const TOGGLE_OFF = 'border-neutral-700 text-neutral-500 hover:bg-neutral-800'
+const ICON_BUTTON =
+  'rounded px-1 text-neutral-500 hover:bg-neutral-800 hover:text-neutral-100 disabled:opacity-30 disabled:hover:bg-transparent'
+
+/**
+ * "12" for the first link, "12 × 9 = 108" after it.
+ *
+ * Under truncation the division stops being exact -- a chain cut off at the
+ * budget leaves a cumulative count that is not a multiple of the level above.
+ * Printing "12 × 8.33 = 100" would assert a factorisation that never
+ * happened, so the bare cumulative count is the only honest thing to show.
+ */
+export function chainCountLabel(previous: number, cumulative: number, index: number): string {
+  if (index === 0) return String(cumulative)
+  if (previous <= 0 || cumulative % previous !== 0) return String(cumulative)
+  return `${previous} × ${cumulative / previous} = ${cumulative}`
+}
 
 /** The fill/stroke last seen for a layer, kept so switching a card off and
  * back on restores what the user had rather than a default. Session-scoped
@@ -162,13 +183,51 @@ export default function Inspector() {
       {layer.repeaters.map((repeater, index) => {
         const record = repeater as unknown as Record<string, Field>
         const scope = `repeat ${index + 1}`
+        const levels = result.perLayerLevelCounts[layer.id] ?? []
+        const cumulative = levels[index] ?? 0
+        const previous = index === 0 ? 1 : (levels[index - 1] ?? 0)
         return (
-          <div className={CARD} key={index} data-testid={`card-repeater-${index}`}>
+          // Keyed by index AND type: the list reorders now, and a bare index
+          // key makes React reuse the wrong card's DOM, so slider focus jumps
+          // between links. Still collides in a [radial, radial] chain, but the
+          // failure shrinks from "wrong card" to "identical card". Real ids on
+          // repeaters would fix it properly; that is a schema change.
+          <div className={CARD} key={`${index}-${repeater.type}`} data-testid={`card-repeater-${index}`}>
             <div className={HEADING}>
-              Repeat {index + 1} · {repeater.type}
-              <span className="ml-auto tabular-nums normal-case tracking-normal text-neutral-600">
-                {count}
+              <span className="shrink-0">Repeat {index + 1}</span>
+              <select
+                aria-label={`${scope} type`}
+                className="ml-1 rounded border border-neutral-700 bg-neutral-950 px-1 py-0.5 text-[11px] normal-case tracking-normal text-neutral-100"
+                value={repeater.type}
+                onChange={(e) =>
+                  apply((d) => setRepeaterType(d, layer.id, index, e.target.value as RepeaterType))
+                }
+              >
+                <option value="radial">radial</option>
+                <option value="grid">grid</option>
+              </select>
+              <span
+                data-testid={`repeater-count-${index}`}
+                className="ml-auto shrink-0 tabular-nums normal-case tracking-normal text-neutral-600"
+              >
+                {chainCountLabel(previous, cumulative, index)}
               </span>
+              <button
+                className={ICON_BUTTON}
+                aria-label={`Move ${scope} up`}
+                disabled={index === 0}
+                onClick={() => apply((d) => moveRepeater(d, layer.id, index, -1))}
+              >
+                ↑
+              </button>
+              <button
+                className={ICON_BUTTON}
+                aria-label={`Remove ${scope}`}
+                disabled={layer.repeaters.length <= 1}
+                onClick={() => apply((d) => removeRepeater(d, layer.id, index))}
+              >
+                ×
+              </button>
             </div>
             {REPEATER_FIELDS[repeater.type].map((descriptor) => (
               <FieldRow
@@ -190,6 +249,16 @@ export default function Inspector() {
           </div>
         )
       })}
+
+      <div className={CARD}>
+        <button
+          data-testid="add-repeater"
+          className="w-full rounded border border-dashed border-neutral-700 py-1 text-neutral-500 hover:border-neutral-600 hover:text-neutral-300"
+          onClick={() => apply((d) => addRepeater(d, layer.id, 'radial'))}
+        >
+          + repeater
+        </button>
+      </div>
 
       <StyleCard
         testId="card-fill"

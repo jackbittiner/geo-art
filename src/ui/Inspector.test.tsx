@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { render, screen, fireEvent, within } from '@testing-library/react'
 import { describe, it, expect, beforeEach } from 'vitest'
-import Inspector from './Inspector'
+import Inspector, { chainCountLabel } from './Inspector'
 import { useStore } from '../state/store'
 import { emptyDocument, defaultLayer, DEFAULT_FILL, DEFAULT_STROKE } from '../document/defaults'
 import { emptyHistory } from '../state/history'
@@ -603,5 +603,81 @@ describe('Inspector', () => {
 
     fireEvent.change(screen.getByLabelText('fill hue'), { target: { value: '200' } })
     expect(useStore.getState().history.past).toHaveLength(3)
+  })
+
+  // Nested inside `describe('Inspector', ...)`, not appended as a sibling:
+  // its beforeEach(seed) only runs for tests declared within this describe's
+  // scope, and every test below relies on starting from a single fresh
+  // radial repeater.
+  describe('the repeater chain', () => {
+    it('adds a repeater to the end of the chain', () => {
+      render(<Inspector />)
+      fireEvent.click(screen.getByTestId('add-repeater'))
+      expect(screen.getByTestId('card-repeater-1')).toBeDefined()
+      expect(useStore.getState().doc.layers[0].repeaters).toHaveLength(2)
+    })
+
+    it('changes a repeater’s type from its header', () => {
+      render(<Inspector />)
+      fireEvent.change(screen.getByLabelText('repeat 1 type'), { target: { value: 'grid' } })
+      expect(useStore.getState().doc.layers[0].repeaters[0].type).toBe('grid')
+      // The grid's own rows render, so the descriptor table was consulted.
+      expect(screen.getByLabelText('repeat 1 rows')).toBeDefined()
+    })
+
+    it('moves a repeater earlier in the chain', () => {
+      render(<Inspector />)
+      fireEvent.click(screen.getByTestId('add-repeater'))
+      fireEvent.change(screen.getByLabelText('repeat 2 type'), { target: { value: 'grid' } })
+      fireEvent.click(screen.getByLabelText('Move repeat 2 up'))
+      expect(useStore.getState().doc.layers[0].repeaters.map((r) => r.type)).toEqual([
+        'grid', 'radial',
+      ])
+    })
+
+    it('removes a repeater', () => {
+      render(<Inspector />)
+      fireEvent.click(screen.getByTestId('add-repeater'))
+      fireEvent.click(screen.getByLabelText('Remove repeat 1'))
+      expect(useStore.getState().doc.layers[0].repeaters).toHaveLength(1)
+    })
+
+    it('disables removal of the last repeater, but not of one of two', () => {
+      // Paired: the disabled assertion alone passes against a button that is
+      // always disabled.
+      render(<Inspector />)
+      expect(screen.getByLabelText('Remove repeat 1')).toHaveProperty('disabled', true)
+      fireEvent.click(screen.getByTestId('add-repeater'))
+      expect(screen.getByLabelText('Remove repeat 1')).toHaveProperty('disabled', false)
+    })
+
+    it('shows the first link’s own count and later links as a product', () => {
+      render(<Inspector />)
+      fireEvent.click(screen.getByTestId('add-repeater'))
+      fireEvent.change(screen.getByLabelText('repeat 2 type'), { target: { value: 'grid' } })
+      // radial 12, then a 3x3 grid on each: 12 then 12 x 9 = 108.
+      expect(screen.getByTestId('repeater-count-0').textContent).toBe('12')
+      expect(screen.getByTestId('repeater-count-1').textContent).toBe('12 × 9 = 108')
+    })
+  })
+})
+
+describe('chainCountLabel', () => {
+  it('shows the bare count for the first link', () => {
+    expect(chainCountLabel(1, 12, 0)).toBe('12')
+  })
+
+  it('shows a product for a later link', () => {
+    expect(chainCountLabel(12, 108, 1)).toBe('12 × 9 = 108')
+  })
+
+  it('drops the product when truncation makes it inexact', () => {
+    // 100 is not a multiple of 12, so no whole factorisation describes what
+    // happened. Printing "12 × 8.33 = 100" would assert something false.
+    expect(chainCountLabel(12, 100, 1)).toBe('100')
+  })
+
+  it('drops the product when the previous level is zero', () => {
+    expect(chainCountLabel(0, 0, 1)).toBe('0')
   })
 })
