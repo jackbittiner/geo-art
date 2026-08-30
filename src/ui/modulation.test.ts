@@ -95,6 +95,41 @@ describe('previewValues', () => {
     expect(previewValues(ramp(), 0)).toEqual([])
   })
 
+  // PREVIEW_CELLS is the exact point where `cells === total` flips to
+  // `cells < total`, and nothing sat on it: 5 copies and 500 copies are both
+  // a long way from the boundary.
+  it('gives one cell per copy at exactly PREVIEW_CELLS, and subsamples one above', () => {
+    expect(previewValues(ramp(), PREVIEW_CELLS - 1)).toHaveLength(PREVIEW_CELLS - 1)
+    expect(previewValues(ramp(), PREVIEW_CELLS)).toHaveLength(PREVIEW_CELLS)
+    expect(previewValues(ramp(), PREVIEW_CELLS + 1)).toHaveLength(PREVIEW_CELLS)
+
+    // At exactly PREVIEW_CELLS every cell is its own copy: no index repeated,
+    // none skipped, so the series steps by a single uniform amount.
+    const stepsOf = (values: number[]) =>
+      new Set(values.slice(1).map((v, i) => Number((v - values[i]).toFixed(9))))
+    const at = previewValues(ramp(), PREVIEW_CELLS)
+    expect(stepsOf(at).size).toBe(1)
+
+    // One copy above, 24 cells have to cover 25 copies, so exactly one copy is
+    // skipped and a second, double-width step appears.
+    const above = previewValues(ramp(), PREVIEW_CELLS + 1)
+    expect(stepsOf(above).size).toBe(2)
+
+    // Both still span the whole ramp, ends included.
+    for (const values of [at, above]) {
+      expect(values[0]).toBeCloseTo(0, 9)
+      expect(values.at(-1)).toBeCloseTo(100, 9)
+    }
+  })
+
+  // `Math.round` and `Math.max(0, ...)` were both unpinned: swapping round for
+  // floor or ceil, or dropping the clamp, left the whole suite green.
+  it('rounds a fractional copy count and yields nothing for a negative one', () => {
+    expect(previewValues(ramp(), 5.6)).toHaveLength(6) // round, not floor
+    expect(previewValues(ramp(), 5.2)).toHaveLength(5) // round, not ceil
+    expect(previewValues(ramp(), -3)).toEqual([])
+  })
+
   it('agrees with what evaluate() actually produces', () => {
     // The anti-drift property: the preview must be the engine's own answer,
     // not a second implementation of the ramp maths that can diverge.
@@ -131,6 +166,37 @@ describe('previewValues', () => {
     )
     expect(previewValues(hue, total)).toEqual(expected)
   })
+  // `previewContext` populates `t` and `flatIndex` alongside `indices`, but
+  // piece A's toggle only ever writes `source: 'index'`, so nothing exercised
+  // them: zeroing either one left the suite green. They are correct today --
+  // pin them now, against the engine's own answer, while that is known.
+  it('resolves a `t`-sourced ramp the way evaluate() does', () => {
+    const hue: Modulated = { base: 0, to: 240, source: 't', curve: 'easeOut' }
+    const doc = emptyDocument()
+    const layer = defaultLayer('halo')
+    layer.repeaters[0].count = 9
+    layer.style.fill = { l: 0.6, c: 0.2, h: hue, a: 1 }
+    doc.layers.push(layer)
+
+    const actual = evaluate(doc).layers[0].instances.map((i) => i.style.fill!.h)
+    expect(previewValues(hue, 9)).toEqual(actual)
+    // And it is not the degenerate all-base answer a zeroed `t` would give.
+    expect(new Set(actual).size).toBe(9)
+  })
+
+  it('resolves a `flatIndex`-sourced ramp the way evaluate() does', () => {
+    const hue: Modulated = { base: 0, to: 240, source: 'flatIndex', curve: 'easeOut' }
+    const doc = emptyDocument()
+    const layer = defaultLayer('halo')
+    layer.repeaters[0].count = 9
+    layer.style.fill = { l: 0.6, c: 0.2, h: hue, a: 1 }
+    doc.layers.push(layer)
+
+    const actual = evaluate(doc).layers[0].instances.map((i) => i.style.fill!.h)
+    expect(previewValues(hue, 9)).toEqual(actual)
+    expect(new Set(actual).size).toBe(9)
+  })
+
   // KNOWN LIMITATION, pinned deliberately rather than fixed here.
   //
   // `previewValues` is handed `perLayerCounts`, the count the engine actually

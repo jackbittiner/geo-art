@@ -12,9 +12,13 @@ type Props = {
  * tested with hand-written numbers.
  */
 export default function RampPreview({ values, label, toColour }: Props) {
+  // role="img" on both branches: an aria-label on a bare <div> has no role to
+  // attach to, so assistive tech never announces it -- even though
+  // getByLabelText matches it happily. The strip is a picture of the ramp, so
+  // "img" is the honest role.
   if (values.length === 0) {
     return (
-      <div data-testid="ramp-empty" aria-label={label} className="text-[10px] text-neutral-500">
+      <div data-testid="ramp-empty" role="img" aria-label={label} className="text-[10px] text-neutral-500">
         no copies
       </div>
     )
@@ -25,7 +29,7 @@ export default function RampPreview({ values, label, toColour }: Props) {
   const span = hi - lo
 
   return (
-    <div aria-label={label} className="flex h-4 items-end gap-px">
+    <div role="img" aria-label={label} className="flex h-4 items-end gap-px">
       {values.map((value, i) => {
         // Computed once so data-colour and style can never disagree.
         const colour = toColour?.(value)

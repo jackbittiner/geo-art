@@ -11,8 +11,12 @@ type Props = {
   scope: string
   descriptor: FieldDescriptor
   value: Field
-  /** Copies the layer actually has, for a truthful preview. */
-  count?: number
+  /**
+   * Copies the layer actually has, for a truthful preview. Required, not
+   * optional-with-a-default: a caller that forgot it used to get a silent
+   * "no copies" strip rather than a type error.
+   */
+  count: number
   /** The evaluation hit the instance budget, so `count` may be short. */
   truncated?: boolean
   toColour?: (value: number) => string
@@ -24,7 +28,7 @@ const slugify = (scope: string) =>
   scope.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
 
 export default function FieldRow({
-  scope, descriptor, value, count = 0, truncated, toColour, onChange,
+  scope, descriptor, value, count, truncated, toColour, onChange,
 }: Props) {
   const idPrefix = `field-${slugify(scope)}-${descriptor.key}`
   const accessibleName = `${scope} ${descriptor.label}`

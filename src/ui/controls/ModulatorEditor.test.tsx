@@ -166,6 +166,35 @@ describe('ModulatorEditor', () => {
     expect(screen.getAllByTestId('ramp-cell')).toHaveLength(5)
   })
 
+  // The `descriptor.preview === 'gradient'` gate had no coverage either way:
+  // deleting it left every test green, and swatches would have appeared on
+  // sides and radius previews where a colour means nothing.
+  const swatch = (v: number) => `oklch(60% 0.2 ${v} / 1)`
+
+  it('paints swatches for a descriptor that previews as a gradient', () => {
+    setup({ count: 2, toColour: swatch })
+    const cells = screen.getAllByTestId('ramp-cell')
+    expect(cells[0].getAttribute('data-colour')).toBe('oklch(60% 0.2 280 / 1)')
+    expect(cells[1].getAttribute('data-colour')).toBe('oklch(60% 0.2 400 / 1)')
+  })
+
+  it('draws bars, not swatches, for a descriptor that does not', () => {
+    const bars: FieldDescriptor = { ...shapeRadius, preview: 'bars' }
+    setup({ descriptor: bars, count: 2, toColour: swatch, accessibleName: 'shape radius' })
+    for (const cell of screen.getAllByTestId('ramp-cell')) {
+      expect(cell.getAttribute('data-colour')).toBeNull()
+      expect(cell.style.height).not.toBe('')
+    }
+  })
+
+  it('treats an unset preview as bars, so a mapper is still ignored', () => {
+    expect(shapeRadius.preview).toBeUndefined()
+    setup({ descriptor: shapeRadius, count: 2, toColour: swatch, accessibleName: 'shape radius' })
+    for (const cell of screen.getAllByTestId('ramp-cell')) {
+      expect(cell.getAttribute('data-colour')).toBeNull()
+    }
+  })
+
   // The preview normalises against the copy count it is handed, but the ramp
   // itself normalises against the count the repeater *intended*. Truncation
   // splits the two, and the preview then promises a sweep the canvas never
