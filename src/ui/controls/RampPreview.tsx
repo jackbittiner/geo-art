@@ -26,21 +26,25 @@ export default function RampPreview({ values, label, toColour }: Props) {
 
   return (
     <div aria-label={label} className="flex h-4 items-end gap-px">
-      {values.map((value, i) => (
-        <div
-          key={i}
-          data-testid="ramp-cell"
-          // The raw mapper output, because jsdom rewrites oklch() in `style`.
-          data-colour={toColour ? toColour(value) : undefined}
-          className={toColour ? 'h-full flex-1' : 'flex-1 bg-sky-500'}
-          style={
-            toColour
-              ? { background: toColour(value) }
-              : // A flat ramp still needs a visible bar, hence the 50% floor.
-                { height: span === 0 ? '50%' : `${10 + (90 * (value - lo)) / span}%` }
-          }
-        />
-      ))}
+      {values.map((value, i) => {
+        // Computed once so data-colour and style can never disagree.
+        const colour = toColour?.(value)
+        return (
+          <div
+            key={i}
+            data-testid="ramp-cell"
+            // The raw mapper output, because jsdom rewrites oklch() in `style`.
+            data-colour={colour}
+            className={colour ? 'h-full flex-1' : 'flex-1 bg-sky-500'}
+            style={
+              colour
+                ? { background: colour }
+                : // A flat ramp still needs a visible bar, hence the 50% floor.
+                  { height: span === 0 ? '50%' : `${10 + (90 * (value - lo)) / span}%` }
+            }
+          />
+        )
+      })}
     </div>
   )
 }

@@ -30,7 +30,7 @@ describe('RampPreview', () => {
   it('renders flat bars when every value is identical', () => {
     render(<RampPreview values={[5, 5, 5]} label="shape sides preview" />)
     const heights = screen.getAllByTestId('ramp-cell').map((el) => el.style.height)
-    expect(new Set(heights).size).toBe(1)
+    expect(heights).toEqual(['50%', '50%', '50%'])
   })
 
   it('says so when the layer has no copies', () => {
