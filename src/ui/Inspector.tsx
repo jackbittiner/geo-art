@@ -31,16 +31,31 @@ const ICON_BUTTON =
   'rounded px-1 text-neutral-500 hover:bg-neutral-800 hover:text-neutral-100 disabled:opacity-30 disabled:hover:bg-transparent'
 
 /**
+ * True when this link, or any link above it, was cut short by the instance
+ * budget -- so nothing derived from its cumulative count by division (the
+ * count label's factorisation, a ramp preview's denominator) describes what
+ * actually happened.
+ */
+export function truncatedThrough(levelTruncated: boolean[], index: number): boolean {
+  return levelTruncated.slice(0, index + 1).some(Boolean)
+}
+
+/**
  * "12" for the first link, "12 × 9 = 108" after it.
  *
- * Under truncation the division stops being exact -- a chain cut off at the
- * budget leaves a cumulative count that is not a multiple of the level above.
- * Printing "12 × 8.33 = 100" would assert a factorisation that never
- * happened, so the bare cumulative count is the only honest thing to show.
+ * `truncated` is the engine's per-level flag, not arithmetic: a truncated
+ * level often *does* divide the level above exactly, because the budget is
+ * round. [radial(200), grid(40×40)] against maxInstances 100_000 stops at
+ * 100000, and 100000 / 200 is a clean 500 -- but there is no 500 anywhere in
+ * that document. The grid has 1600 cells and only 63 of the 200 rings
+ * received any at all. Where a level did not run to completion the bare
+ * cumulative count is the only honest thing to show.
  */
-export function chainCountLabel(previous: number, cumulative: number, index: number): string {
+export function chainCountLabel(
+  previous: number, cumulative: number, index: number, truncated: boolean,
+): string {
   if (index === 0) return String(cumulative)
-  if (previous <= 0 || cumulative % previous !== 0) return String(cumulative)
+  if (truncated || previous <= 0 || cumulative % previous !== 0) return String(cumulative)
   return `${previous} × ${cumulative / previous} = ${cumulative}`
 }
 
@@ -108,6 +123,8 @@ export default function Inspector() {
   }
 
   const count = result.perLayerCounts[layer.id] ?? 0
+  const levels = result.perLayerLevelCounts[layer.id] ?? []
+  const levelTruncated = result.perLayerLevelTruncated[layer.id] ?? []
   // Threaded down beside `count` rather than reached for from the editor:
   // `count` is the *emitted* copy count and a modulated field normalises
   // against the *intended* one, so under truncation the preview overstates.
@@ -183,7 +200,6 @@ export default function Inspector() {
       {layer.repeaters.map((repeater, index) => {
         const record = repeater as unknown as Record<string, Field>
         const scope = `repeat ${index + 1}`
-        const levels = result.perLayerLevelCounts[layer.id] ?? []
         const cumulative = levels[index] ?? 0
         const previous = index === 0 ? 1 : (levels[index - 1] ?? 0)
         return (
@@ -210,7 +226,7 @@ export default function Inspector() {
                 data-testid={`repeater-count-${index}`}
                 className="ml-auto shrink-0 tabular-nums normal-case tracking-normal text-neutral-600"
               >
-                {chainCountLabel(previous, cumulative, index)}
+                {chainCountLabel(previous, cumulative, index, truncatedThrough(levelTruncated, index))}
               </span>
               <button
                 className={ICON_BUTTON}

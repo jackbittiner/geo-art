@@ -26,4 +26,15 @@ export type EvaluationResult = {
    * truncates.
    */
   perLayerLevelCounts: Record<string, number[]>
+  /**
+   * Whether each link's expansion was cut short by the instance budget. One
+   * entry per link, aligned with `perLayerLevelCounts`.
+   *
+   * The chain-wide `truncated` flag cannot answer this: a cumulative count is
+   * only the product of the counts above it when every level up to and
+   * including it ran to completion, and a level cut off at a round budget
+   * (100_000 is round) still divides its parent exactly -- so the arithmetic
+   * alone cannot tell a real factorisation from an invented one.
+   */
+  perLayerLevelTruncated: Record<string, boolean[]>
 }

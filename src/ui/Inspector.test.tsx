@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { render, screen, fireEvent, within } from '@testing-library/react'
 import { describe, it, expect, beforeEach } from 'vitest'
-import Inspector, { chainCountLabel } from './Inspector'
+import Inspector, { chainCountLabel, truncatedThrough } from './Inspector'
 import { useStore } from '../state/store'
 import { emptyDocument, defaultLayer, DEFAULT_FILL, DEFAULT_STROKE } from '../document/defaults'
 import { emptyHistory } from '../state/history'
@@ -659,25 +659,92 @@ describe('Inspector', () => {
       expect(screen.getByTestId('repeater-count-0').textContent).toBe('12')
       expect(screen.getByTestId('repeater-count-1').textContent).toBe('12 × 9 = 108')
     })
+
+    it('shows a bare count for a link the budget cut short, product or no product', () => {
+      // Every number here is one the UI can actually produce: maxInstances is
+      // 100_000, radial count maxes at 200 and grid rows/cols at 40. The grid
+      // has 1600 cells, so 62 rings get a full grid, one gets 800 cells and
+      // the remaining 137 get nothing -- yet 100000 divides 200 exactly, so
+      // "200 × 500 = 100000" reads as arithmetic while naming a 500 that
+      // exists nowhere. The third link is worse: it claims one copy per
+      // parent from a repeater that never ran on most of them.
+      const doc = useStore.getState().doc
+      useStore.setState({
+        doc: {
+          ...doc,
+          layers: [
+            {
+              ...doc.layers[0],
+              repeaters: [
+                { type: 'radial', count: 200, radius: 180, startAngle: 0, spin: 0 },
+                { type: 'grid', rows: 40, cols: 40, spacingX: 10, spacingY: 10, spin: 0 },
+                { type: 'radial', count: 12, radius: 20, startAngle: 0, spin: 0 },
+              ],
+            },
+          ],
+        },
+      })
+      render(<Inspector />)
+      // Link 1 ran to completion, so its own count is still a fact.
+      expect(screen.getByTestId('repeater-count-0').textContent).toBe('200')
+      expect(screen.getByTestId('repeater-count-1').textContent).toBe('100000')
+      expect(screen.getByTestId('repeater-count-2').textContent).toBe('100000')
+    })
   })
 })
 
 describe('chainCountLabel', () => {
   it('shows the bare count for the first link', () => {
-    expect(chainCountLabel(1, 12, 0)).toBe('12')
+    expect(chainCountLabel(1, 12, 0, false)).toBe('12')
   })
 
   it('shows a product for a later link', () => {
-    expect(chainCountLabel(12, 108, 1)).toBe('12 × 9 = 108')
+    expect(chainCountLabel(12, 108, 1, false)).toBe('12 × 9 = 108')
   })
 
   it('drops the product when truncation makes it inexact', () => {
     // 100 is not a multiple of 12, so no whole factorisation describes what
     // happened. Printing "12 × 8.33 = 100" would assert something false.
-    expect(chainCountLabel(12, 100, 1)).toBe('100')
+    expect(chainCountLabel(12, 100, 1, false)).toBe('100')
   })
 
   it('drops the product when the previous level is zero', () => {
-    expect(chainCountLabel(0, 0, 1)).toBe('0')
+    expect(chainCountLabel(0, 0, 1, false)).toBe('0')
+  })
+
+  it('drops the product for a truncated level even when the division is exact', () => {
+    // The case the modulo guard cannot see, and the one the sliders actually
+    // reach: [radial(200), grid(40x40)] stops at the budget, and 100000 / 200
+    // is a clean 500. No 500 exists in that document -- the grid has 1600
+    // cells and 137 of the 200 rings received none of them.
+    expect(chainCountLabel(200, 100_000, 1, true)).toBe('100000')
+  })
+
+  it('drops the product for a link below a truncated one', () => {
+    // A third link expanding truncated parents cannot be an honest factor of
+    // them either: "100000 × 1 = 100000" claims each parent contributed one
+    // copy, when most contributed none.
+    expect(chainCountLabel(100_000, 100_000, 2, true)).toBe('100000')
+  })
+})
+
+describe('truncatedThrough', () => {
+  it('is false when nothing was cut short', () => {
+    expect(truncatedThrough([false, false], 1)).toBe(false)
+  })
+
+  it('is true at the level that was cut short', () => {
+    expect(truncatedThrough([false, true], 1)).toBe(true)
+  })
+
+  it('is false above the level that was cut short', () => {
+    // Level 0 ran to completion; its own count is still a fact.
+    expect(truncatedThrough([false, true], 0)).toBe(false)
+  })
+
+  it('stays true below the level that was cut short', () => {
+    // Everything downstream of a cut level is expanding an incomplete set of
+    // parents, so no product through it describes what happened.
+    expect(truncatedThrough([false, true, false], 2)).toBe(true)
   })
 })

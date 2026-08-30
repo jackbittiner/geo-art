@@ -54,18 +54,24 @@ function resolveStyle(style: StyleConfig, ctx: EvalContext): ResolvedStyle {
 function expandChain(
   layer: Layer,
   budget: number,
-): { nodes: Placement[]; truncated: boolean; levelCounts: number[] } {
+): { nodes: Placement[]; truncated: boolean; levelCounts: number[]; levelTruncated: boolean[] } {
   let nodes: Placement[] = [{ transform: IDENTITY, ctx: rootContext() }]
-  let truncated = false
   const levelCounts: number[] = []
+  // Per level, not one flag for the chain: the inspector reports each link's
+  // count as a product of the level above, and that product is only true
+  // where every level up to and including it ran to completion. Which level
+  // was cut is the only thing that distinguishes an honest factorisation
+  // from an invented one, and the chain-wide flag has already lost it.
+  const levelTruncated: boolean[] = []
 
   for (const config of layer.repeaters) {
     const repeater = getRepeater(config.type)
     const next: Placement[] = []
+    let cutHere = false
     for (const node of nodes) {
       const remaining = budget - next.length
       if (remaining <= 0) {
-        truncated = true
+        cutHere = true
         break
       }
       const children = repeater.expand(config, node.ctx, remaining)
@@ -77,7 +83,7 @@ function expandChain(
       // remaining budget, which is not truncation).
       if (children.length > 0) {
         const level = children[0].ctx.counts.length - 1
-        if (children.length < children[0].ctx.counts[level]) truncated = true
+        if (children.length < children[0].ctx.counts[level]) cutHere = true
       }
       for (const child of children) {
         next.push({ transform: compose(node.transform, child.transform), ctx: child.ctx })
@@ -85,15 +91,17 @@ function expandChain(
     }
     nodes = next
     levelCounts.push(nodes.length)
+    levelTruncated.push(cutHere)
   }
 
-  return { nodes, truncated, levelCounts }
+  return { nodes, truncated: levelTruncated.some(Boolean), levelCounts, levelTruncated }
 }
 
 export function evaluate(doc: Document): EvaluationResult {
   const layers: EvaluationResult['layers'] = []
   const perLayerCounts: Record<string, number> = {}
   const perLayerLevelCounts: Record<string, number[]> = {}
+  const perLayerLevelTruncated: Record<string, boolean[]> = {}
   let totalInstances = 0
   let truncated = false
 
@@ -104,6 +112,7 @@ export function evaluate(doc: Document): EvaluationResult {
       if (layer.visible) truncated = true
       perLayerCounts[layer.id] = 0
       perLayerLevelCounts[layer.id] = []
+      perLayerLevelTruncated[layer.id] = []
       layers.push({ layerId: layer.id, instances: [] })
       continue
     }
@@ -125,9 +134,17 @@ export function evaluate(doc: Document): EvaluationResult {
 
     perLayerCounts[layer.id] = instances.length
     perLayerLevelCounts[layer.id] = expansion.levelCounts
+    perLayerLevelTruncated[layer.id] = expansion.levelTruncated
     totalInstances += instances.length
     layers.push({ layerId: layer.id, instances })
   }
 
-  return { layers, totalInstances, truncated, perLayerCounts, perLayerLevelCounts }
+  return {
+    layers,
+    totalInstances,
+    truncated,
+    perLayerCounts,
+    perLayerLevelCounts,
+    perLayerLevelTruncated,
+  }
 }

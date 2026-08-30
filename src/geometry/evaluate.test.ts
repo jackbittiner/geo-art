@@ -162,12 +162,43 @@ describe('per-level counts', () => {
     expect(evaluate(doc).perLayerLevelCounts[layer.id]).toEqual([12])
   })
 
+  it('reports which link of the chain the budget cut short', () => {
+    // The real ceiling and the real slider maxima: radial count tops out at
+    // 200, grid rows/cols at 40. The grid has 1600 cells, so the budget runs
+    // out 63 rings in -- and 100000 is still an exact multiple of 200, which
+    // is why the cumulative counts alone cannot reveal the truncation.
+    const doc = emptyDocument()
+    const layer = defaultLayer('halo')
+    layer.repeaters = [
+      { type: 'radial', count: 200, radius: 180, startAngle: 0, spin: 0 },
+      { type: 'grid', rows: 40, cols: 40, spacingX: 10, spacingY: 10, spin: 0 },
+    ]
+    doc.layers.push(layer)
+
+    const result = evaluate(doc)
+    expect(result.perLayerLevelCounts[layer.id]).toEqual([200, 100_000])
+    expect(result.perLayerLevelTruncated[layer.id]).toEqual([false, true])
+    expect(result.truncated).toBe(true)
+  })
+
+  it('marks no level as truncated when the whole chain fits', () => {
+    const doc = emptyDocument()
+    const layer = defaultLayer('halo')
+    layer.repeaters = [
+      { type: 'radial', count: 3, radius: 100, startAngle: 0, spin: 0 },
+      { type: 'grid', rows: 2, cols: 2, spacingX: 10, spacingY: 10, spin: 0 },
+    ]
+    doc.layers.push(layer)
+    expect(evaluate(doc).perLayerLevelTruncated[layer.id]).toEqual([false, false])
+  })
+
   it('gives a hidden layer an empty level list', () => {
     const doc = emptyDocument()
     const layer = defaultLayer('halo')
     layer.visible = false
     doc.layers.push(layer)
     expect(evaluate(doc).perLayerLevelCounts[layer.id]).toEqual([])
+    expect(evaluate(doc).perLayerLevelTruncated[layer.id]).toEqual([])
   })
 
   it('composes the chain in order, not merely to the right total', () => {
