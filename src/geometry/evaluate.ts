@@ -51,9 +51,13 @@ function resolveStyle(style: StyleConfig, ctx: EvalContext): ResolvedStyle {
  * remaining budget, so a resolved copy count in the millions never gets
  * fully built before being discarded.
  */
-function expandChain(layer: Layer, budget: number): { nodes: Placement[]; truncated: boolean } {
+function expandChain(
+  layer: Layer,
+  budget: number,
+): { nodes: Placement[]; truncated: boolean; levelCounts: number[] } {
   let nodes: Placement[] = [{ transform: IDENTITY, ctx: rootContext() }]
   let truncated = false
+  const levelCounts: number[] = []
 
   for (const config of layer.repeaters) {
     const repeater = getRepeater(config.type)
@@ -80,14 +84,16 @@ function expandChain(layer: Layer, budget: number): { nodes: Placement[]; trunca
       }
     }
     nodes = next
+    levelCounts.push(nodes.length)
   }
 
-  return { nodes, truncated }
+  return { nodes, truncated, levelCounts }
 }
 
 export function evaluate(doc: Document): EvaluationResult {
   const layers: EvaluationResult['layers'] = []
   const perLayerCounts: Record<string, number> = {}
+  const perLayerLevelCounts: Record<string, number[]> = {}
   let totalInstances = 0
   let truncated = false
 
@@ -97,6 +103,7 @@ export function evaluate(doc: Document): EvaluationResult {
     if (!layer.visible || budget <= 0) {
       if (layer.visible) truncated = true
       perLayerCounts[layer.id] = 0
+      perLayerLevelCounts[layer.id] = []
       layers.push({ layerId: layer.id, instances: [] })
       continue
     }
@@ -117,9 +124,10 @@ export function evaluate(doc: Document): EvaluationResult {
     })
 
     perLayerCounts[layer.id] = instances.length
+    perLayerLevelCounts[layer.id] = expansion.levelCounts
     totalInstances += instances.length
     layers.push({ layerId: layer.id, instances })
   }
 
-  return { layers, totalInstances, truncated, perLayerCounts }
+  return { layers, totalInstances, truncated, perLayerCounts, perLayerLevelCounts }
 }

@@ -19,4 +19,11 @@ export type EvaluationResult = {
   totalInstances: number
   truncated: boolean
   perLayerCounts: Record<string, number>
+  /**
+   * Cumulative instance count after each link of each layer's chain. The
+   * inspector shows a link's own contribution against the running product,
+   * which is what tells you *which* link blew the budget when a chain
+   * truncates.
+   */
+  perLayerLevelCounts: Record<string, number[]>
 }
