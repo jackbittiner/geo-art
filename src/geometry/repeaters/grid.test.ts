@@ -95,7 +95,11 @@ describe('grid repeater', () => {
   })
 
   it('clamps rows and columns to at least one', () => {
-    expect(grid.expand(config({ rows: 0, cols: 0 }), rootContext(), NO_LIMIT)).toHaveLength(1)
+    // The position matters, not just the count: moving the clamp onto the
+    // product (`count = Math.max(1, rows * cols)`) also yields one placement,
+    // but `col = 0 % 0` is NaN and the cell lands at (NaN, NaN) -- an
+    // invisible layer with no error anywhere.
+    expect(originsOf(config({ rows: 0, cols: 0 }))).toEqual([{ x: 0, y: 0 }])
   })
 
   it('gives a single cell t = 0 rather than NaN', () => {
@@ -114,6 +118,18 @@ describe('grid repeater', () => {
     const p3 = applyPoint(out[3].transform, { x: 0, y: 0 })
     expect(p3.x).toBeCloseTo(-100, 9)
     expect(p3.y).toBeCloseTo(20, 9)
+  })
+
+  it('keeps truncated cells where the full grid puts them, not re-centred', () => {
+    // limit 2 on a 2x3, deliberately: at limit 4 the emitted cells still span
+    // all three columns and both rows, so their bounding box is the whole
+    // grid's and a "re-centre on what was emitted" bug agrees by accident.
+    // Two cells span one row and two columns, where the two disagree --
+    // re-centring would put them at (-50, -20) and (50, -20).
+    expect(originsOf(config(), 2)).toEqual([
+      { x: -100, y: -20 },
+      { x: 0, y: -20 },
+    ])
   })
 
   it('emits zero placements when the limit is zero or negative', () => {
