@@ -96,4 +96,21 @@ describe('ModulatorEditor', () => {
     setup({ count: 5 })
     expect(screen.getAllByTestId('ramp-cell')).toHaveLength(5)
   })
+
+  // RampPreview's cells are empty `flex-1` divs, so its own max-content width
+  // is just the gaps -- 23px for 24 cells. It stayed that narrow because the
+  // `constant` button's `ml-auto` claimed the rest of the row. The width has
+  // to be granted here, at the call site, so RampPreview stays layout-agnostic.
+  //
+  // jsdom performs no layout: this asserts the classes that grant the width,
+  // not a rendered width. Only a browser can confirm the strip is wide.
+  it('grants the preview the row width rather than the constant button', () => {
+    setup()
+    const strip = screen.getByLabelText('fill hue preview')
+    const wrapper = strip.parentElement!
+    expect(wrapper.className).toContain('flex-1')
+    expect(wrapper.className).toContain('min-w-0')
+    const button = screen.getByRole('button', { name: 'fill hue make constant' })
+    expect(button.className).not.toContain('ml-auto')
+  })
 })
