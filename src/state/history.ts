@@ -75,6 +75,15 @@ export function undo(
   }
 }
 
+/**
+ * Pushes to `past` without re-applying MAX_ENTRIES, which is safe only
+ * because of an invariant `record` maintains: it caps `past` at MAX_ENTRIES
+ * *and* clears `future` in the same step, so `past.length + future.length`
+ * can never exceed the cap. undo and redo only move entries between the two
+ * stacks, conserving that sum, so a redo can never push `past` past the cap.
+ * Anything that grows `future` without shrinking `past` would break this and
+ * would need its own cap here.
+ */
 export function redo(
   history: History,
   current: Document,
