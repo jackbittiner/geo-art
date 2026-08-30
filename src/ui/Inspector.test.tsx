@@ -93,7 +93,7 @@ describe('Inspector', () => {
     expect(countInput.value).toBe('12')
   })
 
-  it('renders a modulated field as a read-only chip', () => {
+  it('renders the editor for a modulated field, not a read-only chip', () => {
     const doc = useStore.getState().doc
     useStore.setState({
       doc: {
@@ -109,8 +109,10 @@ describe('Inspector', () => {
       },
     })
     render(<Inspector />)
-    expect(screen.getByTestId('modulated-repeat 1-spin')).toBeDefined()
-    expect(screen.queryByLabelText('repeat 1 spin')).toBeNull()
+    expect(screen.getByLabelText('repeat 1 spin to')).toBeDefined()
+    expect(screen.getByLabelText('repeat 1 spin curve')).toBeDefined()
+    // The first-line slider now edits base rather than disappearing.
+    expect(screen.getByLabelText('repeat 1 spin')).toBeDefined()
   })
 
   it('omits the style card for a layer with no fill', () => {
@@ -164,8 +166,8 @@ describe('Inspector', () => {
     fireEvent.click(screen.getByLabelText('repeat 1 spin make constant'))
 
     expect(useStore.getState().doc.layers[0].repeaters[0]).toMatchObject({ spin: 15 })
-    // And the chip is replaced by an editable slider.
-    expect(screen.queryByTestId('modulated-repeat 1-spin')).toBeNull()
+    // And the editor is replaced by a plain, editable slider.
+    expect(screen.queryByLabelText('repeat 1 spin to')).toBeNull()
     expect((screen.getByLabelText('repeat 1 spin') as HTMLInputElement).value).toBe('15')
   })
   // Both halves of a slider that was narrower than the data it edits: the

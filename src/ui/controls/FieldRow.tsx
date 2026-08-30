@@ -1,75 +1,90 @@
 import { isModulated, type Field } from '../../geometry/field'
 import type { FieldDescriptor } from '../descriptors'
+import { toModulated } from '../modulation'
+import ModulatorEditor from './ModulatorEditor'
 
 type Props = {
   /**
    * Disambiguates fields that share a name across cards — a polygon and a
-   * radial repeater both have "radius", and Phase 2's chains will have two
-   * "count" fields. Scope makes every id and accessible name unique.
+   * radial repeater both have "radius", and a chain has two "count" fields.
    */
   scope: string
   descriptor: FieldDescriptor
   value: Field
-  onChange: (value: number) => void
+  /** Copies the layer actually has, for a truthful preview. */
+  count?: number
+  toColour?: (value: number) => string
+  onChange: (value: Field) => void
 }
 
-/**
- * Phase 1 edits constants only. A modulated field (from a loaded document, or
- * from the Aperture starter) renders as a read-only chip until the Phase 2
- * modulation editor lands -- but with an escape hatch back to a constant, so
- * the parameter is not a dead end in the meantime.
- */
-export default function FieldRow({ scope, descriptor, value, onChange }: Props) {
-  const id = `field-${scope}-${descriptor.key}`
+/** HTML forbids spaces in an id; "repeat 1" has to become "repeat-1". */
+const slugify = (scope: string) =>
+  scope.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+
+export default function FieldRow({
+  scope, descriptor, value, count = 0, toColour, onChange,
+}: Props) {
+  const idPrefix = `field-${slugify(scope)}-${descriptor.key}`
   const accessibleName = `${scope} ${descriptor.label}`
+  const modulated = isModulated(value)
+  const base = modulated ? value.base : value
 
-  if (isModulated(value)) {
-    return (
-      <div
-        className="flex items-center gap-2 py-0.5"
-        data-testid={`modulated-${scope}-${descriptor.key}`}
-      >
-        <span className="w-20 shrink-0 text-neutral-400">{descriptor.label}</span>
-        <span className="rounded-full border border-neutral-700 px-2 py-0.5 text-[10px] text-neutral-400">
-          {value.base} → {value.to} · {value.source}
-        </span>
-        <button
-          type="button"
-          aria-label={`${accessibleName} make constant`}
-          title="Replace the modulation with its base value"
-          className="rounded border border-neutral-700 px-1 py-0.5 text-[10px] text-neutral-400 hover:bg-neutral-800"
-          onClick={() => onChange(value.base)}
-        >
-          constant
-        </button>
-      </div>
-    )
-  }
-
-  // 'any', not 1: a default step of 1 snapped every fractional value the
-  // schema allows -- a rotation of 4.5° became 5° the moment the slider was
-  // touched. Integral fields (sides, count) declare step: 1 for themselves.
-  const step = descriptor.step ?? 'any'
   return (
-    <div className="flex items-center gap-2 py-0.5">
-      <label className="w-20 shrink-0 text-neutral-400" htmlFor={id}>
-        {descriptor.label}
-      </label>
-      <input
-        id={id}
-        aria-label={accessibleName}
-        type="range"
-        className="min-w-0 flex-1 accent-sky-500"
-        min={descriptor.min}
-        max={descriptor.max}
-        step={step}
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
-      />
-      <span className="w-12 shrink-0 text-right tabular-nums text-neutral-300">
-        {Number(value.toFixed(3))}
-        {descriptor.unit === '°' ? '°' : ''}
-      </span>
+    <div data-testid={`field-${slugify(scope)}-${descriptor.key}`}>
+      <div className="flex items-center gap-2 py-0.5">
+        <label className="w-20 shrink-0 text-neutral-400" htmlFor={idPrefix}>
+          {descriptor.label}
+        </label>
+        <input
+          id={idPrefix}
+          aria-label={accessibleName}
+          type="range"
+          className="min-w-0 flex-1 accent-sky-500"
+          min={descriptor.min}
+          max={descriptor.max}
+          // 'any', not 1: a default step of 1 snapped every fractional value
+          // the schema allows -- a rotation of 4.5° became 5° the moment the
+          // slider was touched. Integral fields declare step: 1 themselves.
+          step={descriptor.step ?? 'any'}
+          value={base}
+          onChange={(e) => {
+            const next = Number(e.target.value)
+            onChange(modulated ? { ...value, base: next } : next)
+          }}
+        />
+        <span className="w-12 shrink-0 text-right tabular-nums text-neutral-300">
+          {Number(base.toFixed(3))}
+          {descriptor.unit === '°' ? '°' : ''}
+        </span>
+        {descriptor.perCopy && (
+          <button
+            type="button"
+            aria-label={`${accessibleName} modulate`}
+            aria-pressed={modulated}
+            title={modulated ? 'Replace the ramp with its base value' : 'Ramp this across the copies'}
+            className={`shrink-0 rounded border px-1 text-[11px] ${
+              modulated
+                ? 'border-sky-500 bg-sky-500/20 text-sky-300'
+                : 'border-neutral-700 text-neutral-500 hover:bg-neutral-800'
+            }`}
+            onClick={() => onChange(modulated ? value.base : toModulated(descriptor, base))}
+          >
+            ~
+          </button>
+        )}
+      </div>
+
+      {modulated && (
+        <ModulatorEditor
+          idPrefix={idPrefix}
+          accessibleName={accessibleName}
+          descriptor={descriptor}
+          field={value}
+          count={count}
+          toColour={toColour}
+          onChange={onChange}
+        />
+      )}
     </div>
   )
 }
