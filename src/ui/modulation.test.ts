@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'vitest'
-import { toModulated } from './modulation'
+import { toModulated, previewValues, PREVIEW_CELLS } from './modulation'
 import { COLOUR_FIELDS, SHAPE_FIELDS, REPEATER_FIELDS, type FieldDescriptor } from './descriptors'
+import { evaluate } from '../geometry/evaluate'
+import { emptyDocument, defaultLayer } from '../document/defaults'
+import type { Modulated } from '../geometry/field'
 
 const colour = (key: string) => COLOUR_FIELDS.find((d) => d.key === key)!
 const shape = (key: string) => SHAPE_FIELDS.polygon.find((d) => d.key === key)!
@@ -45,5 +48,87 @@ describe('toModulated', () => {
     for (const d of descriptors) {
       expect(toModulated(d, 12.5).base).toBe(12.5)
     }
+  })
+
+  // Task 2 left this tie-break unpinned: `far`'s branch is a strict `>`, so a
+  // base sitting exactly at the midpoint of [min, max] resolves to `max`.
+  // That choice is arbitrary, but it must stay fixed — flipping the strict
+  // comparison, or swapping the ternary's branches, would invert the
+  // midpoint's behaviour with no test failing.
+  it('pins the far tie-break at the exact midpoint to max (arbitrary but fixed)', () => {
+    expect(toModulated(colour('l'), 0.5).to).toBe(1)
+  })
+})
+
+const ramp = (over: Partial<Modulated> = {}): Modulated => ({
+  base: 0, to: 100, source: 'index', curve: 'linear', ...over,
+})
+
+describe('previewValues', () => {
+  it('returns one cell per copy when the layer is small', () => {
+    expect(previewValues(ramp(), 5)).toEqual([0, 25, 50, 75, 100])
+  })
+
+  it('caps at PREVIEW_CELLS for a large layer', () => {
+    expect(previewValues(ramp(), 500)).toHaveLength(PREVIEW_CELLS)
+  })
+
+  it('spans the whole ramp when sampling, ending at `to`', () => {
+    const values = previewValues(ramp(), 500)
+    expect(values[0]).toBeCloseTo(0, 6)
+    expect(values.at(-1)).toBeCloseTo(100, 6)
+  })
+
+  it('shows three cycles for cycles: 3, even when sampled', () => {
+    // A cycled ramp returns to its base each cycle. Count how many times the
+    // sampled series steps downward: two resets for three cycles.
+    const values = previewValues(ramp({ cycles: 3 }), 240)
+    const resets = values.filter((v, i) => i > 0 && v < values[i - 1]).length
+    expect(resets).toBe(2)
+  })
+
+  it('returns a single base-valued cell for one copy', () => {
+    expect(previewValues(ramp({ base: 7 }), 1)).toEqual([7])
+  })
+
+  it('returns nothing for a layer with no copies', () => {
+    expect(previewValues(ramp(), 0)).toEqual([])
+  })
+
+  it('agrees with what evaluate() actually produces', () => {
+    // The anti-drift property: the preview must be the engine's own answer,
+    // not a second implementation of the ramp maths that can diverge.
+    const hue: Modulated = { base: 0, to: 240, source: 'index', curve: 'easeOut' }
+    const doc = emptyDocument()
+    const layer = defaultLayer('halo')
+    layer.repeaters[0].count = 12
+    layer.style.fill = { l: 0.6, c: 0.2, h: hue, a: 1 }
+    doc.layers.push(layer)
+
+    const actual = evaluate(doc).layers[0].instances.map((i) => i.style.fill!.h)
+    expect(previewValues(hue, 12)).toEqual(actual)
+  })
+
+  // The test above uses 12 copies, which is below PREVIEW_CELLS, so no
+  // subsampling ever happens (cells === total, every index is its own true
+  // index) — it cannot tell "true index against true total" apart from
+  // "renumbered 0..23". This one drives 200 real copies through evaluate()
+  // and checks the full sampled array against the same 24 true indices
+  // `previewValues` is supposed to pick, so a renumbering bug fails it.
+  it('samples the true index against the true total even when heavily subsampled', () => {
+    const hue: Modulated = { base: 0, to: 240, source: 'index', curve: 'easeOut' }
+    const doc = emptyDocument()
+    const layer = defaultLayer('halo')
+    const total = 200
+    layer.repeaters[0].count = total
+    layer.style.fill = { l: 0.6, c: 0.2, h: hue, a: 1 }
+    doc.layers.push(layer)
+
+    const actual = evaluate(doc).layers[0].instances.map((i) => i.style.fill!.h)
+    const expected = Array.from(
+      { length: PREVIEW_CELLS },
+      (_, k) => actual[Math.round((k * (total - 1)) / (PREVIEW_CELLS - 1))],
+    )
+    expect(previewValues(hue, total)).toEqual(expected)
   })
 })
