@@ -79,6 +79,10 @@ export const REPEATER_FIELDS: Record<RepeaterType, FieldDescriptor[]> = {
   ],
 }
 
+export const STROKE_FIELDS: FieldDescriptor[] = [
+  { key: 'width', label: 'width', min: 0, max: 40, unit: 'px', perCopy: true },
+]
+
 export const COLOUR_FIELDS: FieldDescriptor[] = [
   {
     key: 'l', label: 'lightness', min: 0, max: 1, step: 0.01,
