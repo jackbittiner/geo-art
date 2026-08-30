@@ -253,6 +253,7 @@ describe('Inspector', () => {
     fireEvent.click(screen.getByLabelText('Toggle stroke'))
     expect(useStore.getState().doc.layers[0].style.stroke).toBeUndefined()
     expect(screen.queryByLabelText('stroke hue')).toBeNull()
+    expect(screen.getByTestId('card-stroke').textContent).toMatch(/no stroke/i)
   })
 
   it('restores the same stroke when toggled back on, not a default', () => {
@@ -283,7 +284,7 @@ describe('Inspector', () => {
     useStore.setState({ doc: { ...doc, layers: [{ ...doc.layers[0], style: {} }] } })
     expect(() => render(<Inspector />)).not.toThrow()
     expect(screen.getByTestId('card-fill').textContent).toMatch(/no fill/i)
-    expect(screen.getByTestId('card-stroke').textContent).toMatch(/stroke/i)
+    expect(screen.getByTestId('card-stroke').textContent).toMatch(/no stroke/i)
     expect(screen.getByTestId('note-no-style')).toBeDefined()
   })
 
