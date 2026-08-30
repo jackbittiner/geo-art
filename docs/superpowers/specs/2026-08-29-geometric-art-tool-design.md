@@ -103,7 +103,9 @@ One direction, no cycles.
 ### Boundary rules (non-negotiable)
 
 - `geometry/` imports nothing from `render/`, `state/`, `ui/`, or React.
-- `render/` imports geometry *types* only, never document or UI.
+- `render/` imports from `geometry/` and `document/`, never from `state/` or `ui/`.
+  (Amended during Phase 1: `buildScene` and `exportPng` legitimately take a `Document`.
+  Enforced by `src/render/boundaries.test.ts`.)
 - `document/ops.ts` functions are pure: document in, new document out.
 - `evaluate()` is the only entry point into the engine.
 

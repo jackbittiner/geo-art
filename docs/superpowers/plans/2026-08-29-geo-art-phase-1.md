@@ -15,7 +15,9 @@
 Every task's requirements implicitly include this section.
 
 - **Boundary (non-negotiable, spec §4):** `src/geometry/` imports nothing from `render/`, `state/`, `ui/`, React, or the DOM. No `Path2D`, no `CanvasRenderingContext2D`, no `document`. Task 2 adds an automated test enforcing this; it must never be weakened.
-- `src/render/` imports geometry *types* only — never `document/`, `state/` or `ui/`.
+- `src/render/` imports from `geometry/` and `document/` — never from `state/` or `ui/`.
+  (Amended after the whole-branch review: `buildScene` and `exportPng` take a `Document`,
+  and relocating them would buy nothing. Enforced by `src/render/boundaries.test.ts`.)
 - `src/document/ops.ts` functions are pure: document in, **new** document out. Never mutate.
 - `evaluate()` is the only entry point into the geometry engine.
 - **Angles are stored in degrees** in the document (UI-friendly) and converted to radians at the point of use inside geometry. Never store radians in a `Document`.
