@@ -49,7 +49,17 @@ describe('ModulatorEditor', () => {
   it('edits the curve', () => {
     const { onChange } = setup()
     fireEvent.change(screen.getByLabelText('fill hue curve'), { target: { value: 'easeOut' } })
-    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ curve: 'easeOut' }))
+    expect(onChange).toHaveBeenCalledWith({
+      base: 280, to: 400, source: 'index', curve: 'easeOut',
+    })
+  })
+
+  it('preserves cycles when editing an unrelated control', () => {
+    const { onChange } = setup({ field: field({ cycles: 3 }) })
+    fireEvent.change(screen.getByLabelText('fill hue to'), { target: { value: '340' } })
+    expect(onChange).toHaveBeenCalledWith({
+      base: 280, to: 340, source: 'index', curve: 'linear', cycles: 3,
+    })
   })
 
   it('writes cycles above one, and omits the key at one', () => {
@@ -76,7 +86,7 @@ describe('ModulatorEditor', () => {
   })
 
   it('bounds a non-wrapping field by its descriptor', () => {
-    setup({ descriptor: spin, field: field({ base: 0, to: 360 }), accessibleName: 'repeat 1 spin' })
+    setup({ descriptor: spin, field: field({ base: 50, to: 360 }), accessibleName: 'repeat 1 spin' })
     const to = screen.getByLabelText('repeat 1 spin to') as HTMLInputElement
     expect(Number(to.min)).toBe(-360)
     expect(Number(to.max)).toBe(360)
