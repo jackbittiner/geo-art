@@ -129,7 +129,12 @@ export default function ModulatorEditor({
           aria-label={`${accessibleName} make constant`}
           title="Replace the ramp with its base value"
           className="shrink-0 rounded border border-neutral-700 px-1 py-0.5 text-[10px] text-neutral-400 hover:bg-neutral-800"
-          onClick={() => onChange(field.base)}
+          // Discrete, like FieldRow's `~` toggle: commit so this cannot share
+          // a coalesce group with the sliders around it.
+          onClick={() => {
+            onChange(field.base)
+            onCommit?.()
+          }}
         >
           constant
         </button>

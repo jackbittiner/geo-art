@@ -77,7 +77,17 @@ export default function FieldRow({
                 ? 'border-sky-500 bg-sky-500/20 text-sky-300'
                 : 'border-neutral-700 text-neutral-500 hover:bg-neutral-800'
             }`}
-            onClick={() => onChange(modulated ? value.base : toModulated(descriptor, base))}
+            // A discrete click, not a drag: it must not join -- or open -- the
+            // coalesce group keyed to this row's slider. Without the commit,
+            // toggling a ramp on and then dragging `to` within the idle window
+            // banked one entry for both, so a single undo threw away the ramp
+            // *and* the toggle; toggling on and straight back off banked an
+            // entry identical to the current document, and undo did nothing
+            // visible at all.
+            onClick={() => {
+              onChange(modulated ? value.base : toModulated(descriptor, base))
+              onCommit?.()
+            }}
           >
             ~
           </button>
