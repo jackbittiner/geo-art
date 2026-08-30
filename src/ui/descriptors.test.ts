@@ -53,6 +53,18 @@ describe('descriptor modulation metadata', () => {
     }
   })
 
+  // A rotation of 405 degrees is a rotation of 45 degrees, so a full-turn ramp
+  // needs a `to` past the descriptor's own 360 -- exactly what `wraps` buys
+  // hue. Without it, toModulated(spin, 45) writes a `to` of 405 that spin's
+  // own -360..360 slider cannot represent.
+  it('marks every rotation-like field as wrapping', () => {
+    const turns = geometryFields.filter((d) => d.unit === '°' && d.perCopy)
+    expect(turns.length).toBeGreaterThan(0)
+    for (const d of turns) {
+      expect(d.wraps, `${d.key} is an angle, so it wraps`).toBe(true)
+    }
+  })
+
   it('never declares rampTo on a field that cannot vary', () => {
     for (const d of all.filter((x) => !x.perCopy)) {
       expect(d.rampTo, `${d.key} cannot vary, so a ramp target is misleading`).toBeUndefined()

@@ -28,8 +28,14 @@ export default function ModulatorEditor({
 }: Props) {
   // A wrapping field can target a full turn in either direction; 400° is a
   // legal hue even though max is 360, because colourToCss wraps at render.
-  const toMin = descriptor.wraps ? field.base - 360 : descriptor.min
-  const toMax = descriptor.wraps ? field.base + 360 : descriptor.max
+  //
+  // The Math.min/Math.max is the belt: whatever the descriptor declares, a
+  // value already sitting in the document must be representable by its own
+  // slider. Without it the thumb pins to an end while the readout disagrees,
+  // and the first drag silently rewrites the value -- the Phase 1 bug that
+  // Inspector.test.tsx documents, reintroduced one line further down.
+  const toMin = Math.min(descriptor.wraps ? field.base - 360 : descriptor.min, field.to)
+  const toMax = Math.max(descriptor.wraps ? field.base + 360 : descriptor.max, field.to)
 
   const setCycles = (cycles: number) => {
     const next: Modulated = { ...field, cycles }

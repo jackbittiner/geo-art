@@ -30,7 +30,12 @@ export type FieldDescriptor = {
   rampTo?: RampTarget
   /** How the preview strip renders this field's values. Defaults to bars. */
   preview?: 'gradient' | 'bars'
-  /** Hue wraps, so 400° is a legal target even though max is 360. */
+  /**
+   * The field is an angle: 400° is a legal target even though max is 360,
+   * because hue wraps at render and a rotation of 400° is a rotation of 40°.
+   * The editor gives a wrapping field a `base ± 360` range for `to`, which is
+   * exactly the full turn its `rampTo` asks for.
+   */
   wraps?: boolean
   /**
    * Resolved against the child context, so the field varies across copies
@@ -47,7 +52,7 @@ export const SHAPE_FIELDS: Record<ShapeType, FieldDescriptor[]> = {
     { key: 'radius', label: 'radius', min: 0, max: 600, unit: 'px', perCopy: true },
     {
       key: 'rotation', label: 'rotation', min: -360, max: 360, unit: '°',
-      perCopy: true, rampTo: { kind: 'offset', delta: 360 },
+      perCopy: true, wraps: true, rampTo: { kind: 'offset', delta: 360 },
     },
   ],
   ellipse: [
@@ -55,7 +60,7 @@ export const SHAPE_FIELDS: Record<ShapeType, FieldDescriptor[]> = {
     { key: 'ry', label: 'ry', min: 0, max: 600, unit: 'px', perCopy: true },
     {
       key: 'rotation', label: 'rotation', min: -360, max: 360, unit: '°',
-      perCopy: true, rampTo: { kind: 'offset', delta: 360 },
+      perCopy: true, wraps: true, rampTo: { kind: 'offset', delta: 360 },
     },
   ],
 }
@@ -69,7 +74,7 @@ export const REPEATER_FIELDS: Record<RepeaterType, FieldDescriptor[]> = {
     { key: 'startAngle', label: 'start', min: -360, max: 360, unit: '°' },
     {
       key: 'spin', label: 'spin', min: -360, max: 360, unit: '°',
-      perCopy: true, rampTo: { kind: 'offset', delta: 360 },
+      perCopy: true, wraps: true, rampTo: { kind: 'offset', delta: 360 },
     },
   ],
 }
