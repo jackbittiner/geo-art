@@ -615,6 +615,9 @@ describe('Inspector', () => {
       fireEvent.click(screen.getByTestId('add-repeater'))
       expect(screen.getByTestId('card-repeater-1')).toBeDefined()
       expect(useStore.getState().doc.layers[0].repeaters).toHaveLength(2)
+      // Which type the button adds was unpinned: swapping 'radial' for
+      // 'grid' at the call site left the whole suite green.
+      expect(useStore.getState().doc.layers[0].repeaters[1].type).toBe('radial')
     })
 
     it('changes a repeater’s type from its header', () => {
@@ -640,6 +643,18 @@ describe('Inspector', () => {
       fireEvent.click(screen.getByTestId('add-repeater'))
       fireEvent.click(screen.getByLabelText('Remove repeat 1'))
       expect(useStore.getState().doc.layers[0].repeaters).toHaveLength(1)
+    })
+
+    it('disables moving the first repeater up, but not the second', () => {
+      // Paired, like the removal test below: `disabled={index === 0}` was
+      // unpinned in both directions -- mutating it to `disabled={false}` left
+      // the suite green, and asserting only the disabled half would pass
+      // against a button that is always disabled.
+      render(<Inspector />)
+      expect(screen.getByLabelText('Move repeat 1 up')).toHaveProperty('disabled', true)
+      fireEvent.click(screen.getByTestId('add-repeater'))
+      expect(screen.getByLabelText('Move repeat 1 up')).toHaveProperty('disabled', true)
+      expect(screen.getByLabelText('Move repeat 2 up')).toHaveProperty('disabled', false)
     })
 
     it('disables removal of the last repeater, but not of one of two', () => {
