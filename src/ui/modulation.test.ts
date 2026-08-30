@@ -4,6 +4,9 @@ import { COLOUR_FIELDS, SHAPE_FIELDS, REPEATER_FIELDS, type FieldDescriptor } fr
 import { evaluate } from '../geometry/evaluate'
 import { emptyDocument, defaultLayer } from '../document/defaults'
 import type { Modulated } from '../geometry/field'
+// defaultLayer always seeds a radial repeater, so this narrowing is honest
+// rather than a cast papering over doubt about the union.
+import type { RadialConfig } from '../geometry/repeaters'
 
 const colour = (key: string) => COLOUR_FIELDS.find((d) => d.key === key)!
 const shape = (key: string) => SHAPE_FIELDS.polygon.find((d) => d.key === key)!
@@ -136,7 +139,7 @@ describe('previewValues', () => {
     const hue: Modulated = { base: 0, to: 240, source: 'index', curve: 'easeOut' }
     const doc = emptyDocument()
     const layer = defaultLayer('halo')
-    layer.repeaters[0].count = 12
+    ;(layer.repeaters[0] as RadialConfig).count = 12
     layer.style.fill = { l: 0.6, c: 0.2, h: hue, a: 1 }
     doc.layers.push(layer)
 
@@ -155,7 +158,7 @@ describe('previewValues', () => {
     const doc = emptyDocument()
     const layer = defaultLayer('halo')
     const total = 200
-    layer.repeaters[0].count = total
+    ;(layer.repeaters[0] as RadialConfig).count = total
     layer.style.fill = { l: 0.6, c: 0.2, h: hue, a: 1 }
     doc.layers.push(layer)
 
@@ -174,7 +177,7 @@ describe('previewValues', () => {
     const hue: Modulated = { base: 0, to: 240, source: 't', curve: 'easeOut' }
     const doc = emptyDocument()
     const layer = defaultLayer('halo')
-    layer.repeaters[0].count = 9
+    ;(layer.repeaters[0] as RadialConfig).count = 9
     layer.style.fill = { l: 0.6, c: 0.2, h: hue, a: 1 }
     doc.layers.push(layer)
 
@@ -188,7 +191,7 @@ describe('previewValues', () => {
     const hue: Modulated = { base: 0, to: 240, source: 'flatIndex', curve: 'easeOut' }
     const doc = emptyDocument()
     const layer = defaultLayer('halo')
-    layer.repeaters[0].count = 9
+    ;(layer.repeaters[0] as RadialConfig).count = 9
     layer.style.fill = { l: 0.6, c: 0.2, h: hue, a: 1 }
     doc.layers.push(layer)
 
@@ -218,7 +221,7 @@ describe('previewValues', () => {
     const doc = emptyDocument()
     doc.maxInstances = 6
     const layer = defaultLayer('halo')
-    layer.repeaters[0].count = 12
+    ;(layer.repeaters[0] as RadialConfig).count = 12
     layer.style.fill = { l: 0.6, c: 0.2, h: hue, a: 1 }
     doc.layers.push(layer)
 

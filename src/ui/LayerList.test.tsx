@@ -4,6 +4,9 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import LayerList from './LayerList'
 import { useStore } from '../state/store'
 import { emptyDocument, defaultLayer } from '../document/defaults'
+// defaultLayer always seeds a radial repeater, so this narrowing is honest
+// rather than a cast papering over doubt about the union.
+import type { RadialConfig } from '../geometry/repeaters'
 
 /**
  * Seeds the store with layers named `names`, in document order (so
@@ -17,7 +20,7 @@ function seed(names: string[], counts?: number[]) {
   const doc = emptyDocument()
   names.forEach((n, i) => {
     const layer = defaultLayer(n)
-    if (counts) layer.repeaters[0].count = counts[i]
+    if (counts) (layer.repeaters[0] as RadialConfig).count = counts[i]
     doc.layers.push(layer)
   })
   useStore.setState({ doc, selectedLayerId: doc.layers[0]?.id ?? null })

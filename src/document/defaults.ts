@@ -1,4 +1,5 @@
 import type { Field } from '../geometry/field'
+import type { RepeaterConfig, RepeaterType } from '../geometry/repeaters'
 import type { Colour, Document, Layer } from './schema'
 
 export function newId(): string {
@@ -26,13 +27,19 @@ export function emptyDocument(): Document {
   }
 }
 
+/** The config a repeater gets when added, or when its type is changed. */
+export const DEFAULT_REPEATERS: Record<RepeaterType, RepeaterConfig> = {
+  radial: { type: 'radial', count: 12, radius: 180, startAngle: 0, spin: 0 },
+  grid: { type: 'grid', rows: 3, cols: 3, spacingX: 120, spacingY: 120, spin: 0 },
+}
+
 export function defaultLayer(name: string): Layer {
   return {
     id: newId(),
     name,
     visible: true,
     shape: { type: 'polygon', sides: 6, radius: 60, rotation: 0 },
-    repeaters: [{ type: 'radial', count: 12, radius: 180, startAngle: 0, spin: 0 }],
+    repeaters: [structuredClone(DEFAULT_REPEATERS.radial)],
     style: { fill: { ...DEFAULT_FILL } },
     blend: 'normal',
     opacity: 1,

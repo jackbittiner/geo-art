@@ -1,9 +1,13 @@
 import { useState, type ReactNode } from 'react'
 import { DEFAULT_FILL, DEFAULT_STROKE } from '../document/defaults'
 import {
+  addRepeater,
+  moveRepeater,
+  removeRepeater,
   setFill,
   setFillChannel,
   setRepeaterField,
+  setRepeaterType,
   setShapeField,
   setShapeType,
   setStroke,
@@ -12,16 +16,88 @@ import {
 } from '../document/ops'
 import type { Colour, LayerId, ShapeType } from '../document/schema'
 import { isModulated, type Field } from '../geometry/field'
+import type { RepeaterType } from '../geometry/repeaters'
 import { colourToCss } from '../render/colour'
 import { useStore } from '../state/store'
 import FieldRow from './controls/FieldRow'
 import { COLOUR_FIELDS, REPEATER_FIELDS, SHAPE_FIELDS, STROKE_FIELDS } from './descriptors'
+import type { PreviewCaveat } from './modulation'
 import { useEvaluation } from './useEvaluation'
 
 const CARD = 'border-b border-neutral-800 px-3 py-2'
 const HEADING = 'mb-1 flex items-center text-[10px] font-semibold uppercase tracking-wider text-neutral-500'
 const TOGGLE_ON = 'border-sky-500 bg-sky-500/20 text-sky-300'
 const TOGGLE_OFF = 'border-neutral-700 text-neutral-500 hover:bg-neutral-800'
+const ICON_BUTTON =
+  'rounded px-1 text-neutral-500 hover:bg-neutral-800 hover:text-neutral-100 disabled:opacity-30 disabled:hover:bg-transparent'
+
+/**
+ * Why this link's cumulative count cannot be divided back into a per-parent
+ * contribution, or undefined where it can -- so nothing derived from it by
+ * division (the count label's factorisation, a ramp preview's denominator)
+ * would describe what actually happened.
+ *
+ * Two causes, both invisible to the arithmetic and both recorded by the
+ * engine, with deliberately different blast radii. Truncation propagates
+ * downward: a link below a cut one is expanding a set of parents that is
+ * itself incomplete, so its own count is short too. Non-uniformity does not:
+ * the cumulative count a non-uniform link produces is still exactly how many
+ * parents the next link received, so the next link's ratio is a fact again the
+ * moment that link itself expanded them evenly.
+ */
+export function levelCaveat(
+  levelTruncated: boolean[], levelUniform: boolean[], index: number,
+): PreviewCaveat | undefined {
+  if (index < 0) return undefined
+  for (let i = 0; i <= index && i < levelTruncated.length; i++) {
+    if (levelTruncated[i]) return 'truncated'
+  }
+  return levelUniform[index] === false ? 'uneven' : undefined
+}
+
+/**
+ * Copies one link of the chain contributes per parent copy -- the sweep an
+ * `index` or `t` ramp resolved at that link is spread over.
+ *
+ * `perLayerLevelCounts` is cumulative, so a link's own contribution is the
+ * ratio between its level and the one above: the same factor chainCountLabel
+ * prints. Where that ratio describes nothing that happened, this falls back to
+ * the layer total rather than to a freshly invented number -- a fallback the
+ * caller must pair with the matching `levelCaveat`, since the strip is then
+ * spread over a count the engine did not use.
+ */
+export function levelCopies(
+  levels: number[], levelTruncated: boolean[], levelUniform: boolean[],
+  index: number, layerCount: number,
+): number {
+  if (index < 0 || index >= levels.length) return layerCount
+  if (levelCaveat(levelTruncated, levelUniform, index)) return layerCount
+  const previous = index === 0 ? 1 : levels[index - 1]
+  if (previous <= 0) return layerCount
+  return levels[index] / previous
+}
+
+/**
+ * "12" for the first link, "12 × 9 = 108" after it.
+ *
+ * `unrecoverable` is the engine's per-level reporting, not arithmetic, because
+ * the arithmetic cannot see either way a factorisation goes wrong. A truncated
+ * level often *does* divide the level above exactly, because the budget is
+ * round: [radial(200), grid(40×40)] against maxInstances 100_000 stops at
+ * 100000, and 100000 / 200 is a clean 500 -- but there is no 500 anywhere in
+ * that document. The grid has 1600 cells and only 63 of the 200 rings received
+ * any at all. A level whose parents contributed unequally divides exactly too:
+ * [radial(2), radial(count 2 → 4)] reaches 6, and 6 / 2 = 3 names a link that
+ * does not exist. In both cases the bare cumulative count is the only honest
+ * thing to show.
+ */
+export function chainCountLabel(
+  previous: number, cumulative: number, index: number, unrecoverable: boolean,
+): string {
+  if (index === 0) return String(cumulative)
+  if (unrecoverable || previous <= 0 || cumulative % previous !== 0) return String(cumulative)
+  return `${previous} × ${cumulative / previous} = ${cumulative}`
+}
 
 /** The fill/stroke last seen for a layer, kept so switching a card off and
  * back on restores what the user had rather than a default. Session-scoped
@@ -86,12 +162,22 @@ export default function Inspector() {
     )
   }
 
-  const count = result.perLayerCounts[layer.id] ?? 0
-  // Threaded down beside `count` rather than reached for from the editor:
-  // `count` is the *emitted* copy count and a modulated field normalises
-  // against the *intended* one, so under truncation the preview overstates.
-  // The flag is document-wide, which over-warns; see ModulatorEditor.
-  const truncated = result.truncated
+  const layerCount = result.perLayerCounts[layer.id] ?? 0
+  const levels = result.perLayerLevelCounts[layer.id] ?? []
+  const levelTruncated = result.perLayerLevelTruncated[layer.id] ?? []
+  const levelUniform = result.perLayerLevelUniform[layer.id] ?? []
+  // Shape, colour and stroke fields are resolved against the instance
+  // context, whose innermost level is the last link of the chain -- so their
+  // ramps sweep that link's copies, not the layer's. A layer with no
+  // repeaters has no levels at all and falls back to its single instance.
+  const innerCopies = levelCopies(levels, levelTruncated, levelUniform, levels.length - 1, layerCount)
+  // Threaded down beside `count` rather than reached for from the editor: only
+  // here is it known whether the number handed over is the count the engine
+  // normalised against or the fallback that stands in when no such count
+  // exists. Per link, not the document-wide `result.truncated`, which is blind
+  // to non-uniformity and over-warns on every untruncated layer beside a
+  // truncated one.
+  const innerCaveat = levelCaveat(levelTruncated, levelUniform, levels.length - 1)
   const shapeRecord = layer.shape as unknown as Record<string, Field>
 
   // A swatch needs all four channels, but a channel's ramp only supplies its
@@ -151,8 +237,10 @@ export default function Inspector() {
             scope="shape"
             descriptor={descriptor}
             value={shapeRecord[descriptor.key]}
-            count={count}
-            truncated={truncated}
+            count={innerCopies}
+            layerCount={layerCount}
+            resolution="instance"
+            caveat={innerCaveat}
             onChange={(v) => apply((d) => setShapeField(d, layer.id, descriptor.key, v), `shape-${descriptor.key}`)}
             onCommit={endCoalesce}
           />
@@ -162,13 +250,64 @@ export default function Inspector() {
       {layer.repeaters.map((repeater, index) => {
         const record = repeater as unknown as Record<string, Field>
         const scope = `repeat ${index + 1}`
+        const cumulative = levels[index] ?? 0
+        const previous = index === 0 ? 1 : (levels[index - 1] ?? 0)
+        // A repeater's own perCopy fields (spin) resolve against the context
+        // it builds, so they sweep its copies -- not the chain's product.
+        const copies = levelCopies(levels, levelTruncated, levelUniform, index, layerCount)
+        const copiesCaveat = levelCaveat(levelTruncated, levelUniform, index)
+        // Every other field on the card (count, radius, startAngle; rows,
+        // cols, spacing) is resolved against the *parent* context before this
+        // link exists, so a ramp on one sweeps the link above. The first
+        // link's parent is the single root placement, which is one copy: the
+        // engine holds such a ramp flat at `base`, and a one-cell strip says
+        // exactly that instead of promising a sweep that never happens.
+        const parentCopies =
+          index === 0 ? 1 : levelCopies(levels, levelTruncated, levelUniform, index - 1, layerCount)
+        const parentCaveat =
+          index === 0 ? undefined : levelCaveat(levelTruncated, levelUniform, index - 1)
         return (
-          <div className={CARD} key={index} data-testid={`card-repeater-${index}`}>
+          // Keyed by index AND type: the list reorders now, and a bare index
+          // key makes React reuse the wrong card's DOM, so slider focus jumps
+          // between links. Still collides in a [radial, radial] chain, but the
+          // failure shrinks from "wrong card" to "identical card". Real ids on
+          // repeaters would fix it properly; that is a schema change.
+          <div className={CARD} key={`${index}-${repeater.type}`} data-testid={`card-repeater-${index}`}>
             <div className={HEADING}>
-              Repeat {index + 1} · {repeater.type}
-              <span className="ml-auto tabular-nums normal-case tracking-normal text-neutral-600">
-                {count}
+              <span className="shrink-0">Repeat {index + 1}</span>
+              <select
+                aria-label={`${scope} type`}
+                className="ml-1 rounded border border-neutral-700 bg-neutral-950 px-1 py-0.5 text-[11px] normal-case tracking-normal text-neutral-100"
+                value={repeater.type}
+                onChange={(e) =>
+                  apply((d) => setRepeaterType(d, layer.id, index, e.target.value as RepeaterType))
+                }
+              >
+                <option value="radial">radial</option>
+                <option value="grid">grid</option>
+              </select>
+              <span
+                data-testid={`repeater-count-${index}`}
+                className="ml-auto shrink-0 tabular-nums normal-case tracking-normal text-neutral-600"
+              >
+                {chainCountLabel(previous, cumulative, index, copiesCaveat !== undefined)}
               </span>
+              <button
+                className={ICON_BUTTON}
+                aria-label={`Move ${scope} up`}
+                disabled={index === 0}
+                onClick={() => apply((d) => moveRepeater(d, layer.id, index, -1))}
+              >
+                ↑
+              </button>
+              <button
+                className={ICON_BUTTON}
+                aria-label={`Remove ${scope}`}
+                disabled={layer.repeaters.length <= 1}
+                onClick={() => apply((d) => removeRepeater(d, layer.id, index))}
+              >
+                ×
+              </button>
             </div>
             {REPEATER_FIELDS[repeater.type].map((descriptor) => (
               <FieldRow
@@ -176,8 +315,10 @@ export default function Inspector() {
                 scope={scope}
                 descriptor={descriptor}
                 value={record[descriptor.key]}
-                count={count}
-                truncated={truncated}
+                count={descriptor.perCopy ? copies : parentCopies}
+                layerCount={layerCount}
+                resolution="expansion"
+                caveat={descriptor.perCopy ? copiesCaveat : parentCaveat}
                 onChange={(v) =>
                   apply(
                     (d) => setRepeaterField(d, layer.id, index, descriptor.key, v),
@@ -190,6 +331,16 @@ export default function Inspector() {
           </div>
         )
       })}
+
+      <div className={CARD}>
+        <button
+          data-testid="add-repeater"
+          className="w-full rounded border border-dashed border-neutral-700 py-1 text-neutral-500 hover:border-neutral-600 hover:text-neutral-300"
+          onClick={() => apply((d) => addRepeater(d, layer.id, 'radial'))}
+        >
+          + repeater
+        </button>
+      </div>
 
       <StyleCard
         testId="card-fill"
@@ -205,8 +356,10 @@ export default function Inspector() {
               scope="fill"
               descriptor={descriptor}
               value={layer.style.fill![descriptor.key as 'l' | 'c' | 'h' | 'a']}
-              count={count}
-              truncated={truncated}
+              count={innerCopies}
+              layerCount={layerCount}
+              resolution="instance"
+              caveat={innerCaveat}
               toColour={swatchFor(layer.style.fill!)(descriptor.key as 'l' | 'c' | 'h' | 'a')}
               onChange={(v) =>
                 apply(
@@ -234,8 +387,10 @@ export default function Inspector() {
                 scope="stroke"
                 descriptor={descriptor}
                 value={layer.style.stroke!.colour[descriptor.key as 'l' | 'c' | 'h' | 'a']}
-                count={count}
-                truncated={truncated}
+                count={innerCopies}
+                layerCount={layerCount}
+                resolution="instance"
+                caveat={innerCaveat}
                 toColour={swatchFor(layer.style.stroke!.colour)(descriptor.key as 'l' | 'c' | 'h' | 'a')}
                 onChange={(v) =>
                   apply(
@@ -252,8 +407,10 @@ export default function Inspector() {
                 scope="stroke"
                 descriptor={descriptor}
                 value={layer.style.stroke!.width}
-                count={count}
-                truncated={truncated}
+                count={innerCopies}
+                layerCount={layerCount}
+                resolution="instance"
+                caveat={innerCaveat}
                 onChange={(v) => apply((d) => setStrokeWidth(d, layer.id, v), 'stroke-width')}
                 onCommit={endCoalesce}
               />

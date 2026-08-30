@@ -26,6 +26,8 @@ function setup(over: Partial<EditorProps> = {}) {
       descriptor={hue}
       field={field()}
       count={12}
+      layerCount={12}
+      resolution="instance"
       onChange={onChange}
       onCommit={onCommit}
       {...over}
@@ -227,19 +229,66 @@ describe('ModulatorEditor', () => {
     }
   })
 
+  // Which count the strip normalises against depends on the ramp's source,
+  // and the two only coincided while a layer had a single repeater. Under a
+  // chain, an `index` ramp restarts at every parent copy while a `flatIndex`
+  // ramp runs once across the layer -- so a component handed both counts has
+  // to choose, and choosing wrong is silent.
+  it('spreads an index ramp over the level it resolves at, not the layer', () => {
+    setup({ count: 3, layerCount: 12, toColour: (v: number) => `h${v}` })
+    const cells = screen.getAllByTestId('ramp-cell')
+    expect(cells.map((c) => c.getAttribute('data-colour'))).toEqual(['h280', 'h340', 'h400'])
+  })
+
+  it('spreads a flatIndex ramp over the whole layer', () => {
+    setup({ field: field({ source: 'flatIndex' }), count: 3, layerCount: 12 })
+    expect(screen.getAllByTestId('ramp-cell')).toHaveLength(12)
+  })
+
+  // A repeater's own fields are resolved while the chain is still being
+  // expanded, where flatIndex and total are the root context's 0 and 1 -- so
+  // the engine holds such a ramp at base for every copy. The source alone
+  // cannot say that; only the scope can.
+  it('holds a repeater field’s flatIndex ramp to a single cell, as the engine does', () => {
+    // One cell is the whole ramp: previewValues over a count of 1 can only
+    // resolve at flatIndex 0 of total 1, which is `base` -- exactly what the
+    // canvas draws for all 12 copies. Twelve cells would promise a sweep.
+    setup({
+      descriptor: spin, accessibleName: 'repeat 1 spin', resolution: 'expansion',
+      field: field({ base: 0, to: 90, source: 'flatIndex' }), count: 12, layerCount: 12,
+    })
+    expect(screen.getAllByTestId('ramp-cell')).toHaveLength(1)
+  })
+
   // The preview normalises against the copy count it is handed, but the ramp
   // itself normalises against the count the repeater *intended*. Truncation
   // splits the two, and the preview then promises a sweep the canvas never
   // shows. Until the engine surfaces the intended count, say so.
   it('warns that the preview overstates the ramp when the layer is truncated', () => {
-    setup({ truncated: true })
-    expect(screen.getByTestId('ramp-truncated').textContent)
+    setup({ caveat: 'truncated' })
+    expect(screen.getByTestId('ramp-caveat').textContent)
       .toContain('preview shows the full ramp')
   })
 
-  it('stays quiet when nothing was truncated', () => {
+  // The second way the denominator stops being the engine's: no budget
+  // pressure, no truncation, just parents that each made a different number of
+  // copies. It borrows truncation's fallback number, so it needs a note of its
+  // own rather than truncation's silence.
+  it('warns that the preview evens out a link whose parents differ', () => {
+    setup({ caveat: 'uneven' })
+    expect(screen.getByTestId('ramp-caveat').textContent).toContain('uneven copies')
+  })
+
+  it('stays quiet when the denominator is the one the engine used', () => {
     setup()
-    expect(screen.queryByTestId('ramp-truncated')).toBeNull()
+    expect(screen.queryByTestId('ramp-caveat')).toBeNull()
+  })
+
+  // The caveat is about `count`; a flatIndex ramp never uses it. Warning
+  // anyway would train the user to ignore the note on the strips that need it.
+  it('stays quiet on a flatIndex ramp, which never uses the fallback count', () => {
+    setup({ field: field({ source: 'flatIndex' }), caveat: 'uneven' })
+    expect(screen.queryByTestId('ramp-caveat')).toBeNull()
   })
 
   // RampPreview's cells are empty `flex-1` divs, so its own max-content width

@@ -1,6 +1,6 @@
 import { isModulated, type Field } from '../../geometry/field'
 import type { FieldDescriptor } from '../descriptors'
-import { toModulated } from '../modulation'
+import { toModulated, type FieldResolution, type PreviewCaveat } from '../modulation'
 import ModulatorEditor from './ModulatorEditor'
 
 type Props = {
@@ -12,13 +12,19 @@ type Props = {
   descriptor: FieldDescriptor
   value: Field
   /**
-   * Copies the layer actually has, for a truthful preview. Required, not
-   * optional-with-a-default: a caller that forgot it used to get a silent
-   * "no copies" strip rather than a type error.
+   * Copies of the chain link this field resolves at, for a truthful preview.
+   * Required, not optional-with-a-default: a caller that forgot it used to
+   * get a silent "no copies" strip rather than a type error.
    */
   count: number
-  /** The evaluation hit the instance budget, so `count` may be short. */
-  truncated?: boolean
+  /** Copies the whole layer produces; see ModulatorEditor, which picks
+   * between the two on the ramp's source. Required for the same reason. */
+  layerCount: number
+  /** Where this field resolves; see ModulatorEditor. Required for the same
+   * reason again: a default would silently mis-scope a `flatIndex` ramp. */
+  resolution: FieldResolution
+  /** Set where `count` is a fallback rather than the count the engine used. */
+  caveat?: PreviewCaveat
   toColour?: (value: number) => string
   onChange: (value: Field) => void
   /** Ends the coalesce group — fired on pointer release and on blur. */
@@ -30,7 +36,7 @@ const slugify = (scope: string) =>
   scope.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
 
 export default function FieldRow({
-  scope, descriptor, value, count, truncated, toColour, onChange, onCommit,
+  scope, descriptor, value, count, layerCount, resolution, caveat, toColour, onChange, onCommit,
 }: Props) {
   const idPrefix = `field-${slugify(scope)}-${descriptor.key}`
   const accessibleName = `${scope} ${descriptor.label}`
@@ -101,7 +107,9 @@ export default function FieldRow({
           descriptor={descriptor}
           field={value}
           count={count}
-          truncated={truncated}
+          layerCount={layerCount}
+          resolution={resolution}
+          caveat={caveat}
           toColour={toColour}
           onChange={onChange}
           onCommit={onCommit}

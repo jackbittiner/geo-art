@@ -1,11 +1,15 @@
 // @vitest-environment jsdom
 import { render, screen, fireEvent, within } from '@testing-library/react'
 import { describe, it, expect, beforeEach } from 'vitest'
-import Inspector from './Inspector'
+import Inspector, { chainCountLabel, levelCaveat, levelCopies } from './Inspector'
 import { useStore } from '../state/store'
 import { emptyDocument, defaultLayer, DEFAULT_FILL, DEFAULT_STROKE } from '../document/defaults'
 import { emptyHistory } from '../state/history'
 import { isModulated, type Modulated } from '../geometry/field'
+// Every fixture below is seeded through defaultLayer/seed(), which always
+// starts with a radial repeater, so this narrowing is honest rather than a
+// cast papering over doubt about the union.
+import type { RadialConfig, RepeaterConfig } from '../geometry/repeaters'
 
 function seed() {
   const doc = emptyDocument()
@@ -302,7 +306,7 @@ describe('Inspector', () => {
         layers: [
           {
             ...doc.layers[0],
-            repeaters: [{ ...doc.layers[0].repeaters[0], count: 2 }],
+            repeaters: [{ ...(doc.layers[0].repeaters[0] as RadialConfig), count: 2 }],
             style: {
               fill: { l: 0.9, c: 0.45, h: 10, a: 1 },
               stroke: {
@@ -414,7 +418,7 @@ describe('Inspector', () => {
         layers: [
           {
             ...doc.layers[0],
-            repeaters: [{ ...doc.layers[0].repeaters[0], count: 5 }],
+            repeaters: [{ ...(doc.layers[0].repeaters[0] as RadialConfig), count: 5 }],
             style: {
               fill: { l: 0.6, c: 0.2, h: { base: 0, to: 240, source: 'index', curve: 'linear' }, a: 1 },
             },
@@ -434,7 +438,7 @@ describe('Inspector', () => {
         layers: [
           {
             ...doc.layers[0],
-            repeaters: [{ ...doc.layers[0].repeaters[0], count: 2 }],
+            repeaters: [{ ...(doc.layers[0].repeaters[0] as RadialConfig), count: 2 }],
             style: {
               fill: { l: 0.6, c: 0.2, h: { base: 0, to: 240, source: 'index', curve: 'linear' }, a: 0.5 },
             },
@@ -471,7 +475,7 @@ describe('Inspector', () => {
       },
     })
     render(<Inspector />)
-    expect(screen.getAllByTestId('ramp-truncated').length).toBeGreaterThan(0)
+    expect(screen.getAllByTestId('ramp-caveat').length).toBeGreaterThan(0)
   })
 
   it('shows no truncation warning when the whole document fits', () => {
@@ -490,7 +494,7 @@ describe('Inspector', () => {
       },
     })
     render(<Inspector />)
-    expect(screen.queryByTestId('ramp-truncated')).toBeNull()
+    expect(screen.queryByTestId('ramp-caveat')).toBeNull()
   })
 
   // The swatch fixtures above give every sibling channel as a plain number, so
@@ -505,7 +509,7 @@ describe('Inspector', () => {
         layers: [
           {
             ...doc.layers[0],
-            repeaters: [{ ...doc.layers[0].repeaters[0], count: 2 }],
+            repeaters: [{ ...(doc.layers[0].repeaters[0] as RadialConfig), count: 2 }],
             style: {
               fill: {
                 l: { base: 0.6, to: 0, source: 'index', curve: 'linear' },
@@ -599,5 +603,434 @@ describe('Inspector', () => {
 
     fireEvent.change(screen.getByLabelText('fill hue'), { target: { value: '200' } })
     expect(useStore.getState().history.past).toHaveLength(3)
+  })
+
+  // Nested inside `describe('Inspector', ...)`, not appended as a sibling:
+  // its beforeEach(seed) only runs for tests declared within this describe's
+  // scope, and every test below relies on starting from a single fresh
+  // radial repeater.
+  describe('the repeater chain', () => {
+    it('adds a repeater to the end of the chain', () => {
+      render(<Inspector />)
+      fireEvent.click(screen.getByTestId('add-repeater'))
+      expect(screen.getByTestId('card-repeater-1')).toBeDefined()
+      expect(useStore.getState().doc.layers[0].repeaters).toHaveLength(2)
+      // Which type the button adds was unpinned: swapping 'radial' for
+      // 'grid' at the call site left the whole suite green.
+      expect(useStore.getState().doc.layers[0].repeaters[1].type).toBe('radial')
+    })
+
+    it('changes a repeater’s type from its header', () => {
+      render(<Inspector />)
+      fireEvent.change(screen.getByLabelText('repeat 1 type'), { target: { value: 'grid' } })
+      expect(useStore.getState().doc.layers[0].repeaters[0].type).toBe('grid')
+      // The grid's own rows render, so the descriptor table was consulted.
+      expect(screen.getByLabelText('repeat 1 rows')).toBeDefined()
+    })
+
+    it('moves a repeater earlier in the chain', () => {
+      render(<Inspector />)
+      fireEvent.click(screen.getByTestId('add-repeater'))
+      fireEvent.change(screen.getByLabelText('repeat 2 type'), { target: { value: 'grid' } })
+      fireEvent.click(screen.getByLabelText('Move repeat 2 up'))
+      expect(useStore.getState().doc.layers[0].repeaters.map((r) => r.type)).toEqual([
+        'grid', 'radial',
+      ])
+    })
+
+    it('removes a repeater', () => {
+      render(<Inspector />)
+      fireEvent.click(screen.getByTestId('add-repeater'))
+      fireEvent.click(screen.getByLabelText('Remove repeat 1'))
+      expect(useStore.getState().doc.layers[0].repeaters).toHaveLength(1)
+    })
+
+    it('disables moving the first repeater up, but not the second', () => {
+      // Paired, like the removal test below: `disabled={index === 0}` was
+      // unpinned in both directions -- mutating it to `disabled={false}` left
+      // the suite green, and asserting only the disabled half would pass
+      // against a button that is always disabled.
+      render(<Inspector />)
+      expect(screen.getByLabelText('Move repeat 1 up')).toHaveProperty('disabled', true)
+      fireEvent.click(screen.getByTestId('add-repeater'))
+      expect(screen.getByLabelText('Move repeat 1 up')).toHaveProperty('disabled', true)
+      expect(screen.getByLabelText('Move repeat 2 up')).toHaveProperty('disabled', false)
+    })
+
+    it('disables removal of the last repeater, but not of one of two', () => {
+      // Paired: the disabled assertion alone passes against a button that is
+      // always disabled.
+      render(<Inspector />)
+      expect(screen.getByLabelText('Remove repeat 1')).toHaveProperty('disabled', true)
+      fireEvent.click(screen.getByTestId('add-repeater'))
+      expect(screen.getByLabelText('Remove repeat 1')).toHaveProperty('disabled', false)
+    })
+
+    it('shows the first link’s own count and later links as a product', () => {
+      render(<Inspector />)
+      fireEvent.click(screen.getByTestId('add-repeater'))
+      fireEvent.change(screen.getByLabelText('repeat 2 type'), { target: { value: 'grid' } })
+      // radial 12, then a 3x3 grid on each: 12 then 12 x 9 = 108.
+      expect(screen.getByTestId('repeater-count-0').textContent).toBe('12')
+      expect(screen.getByTestId('repeater-count-1').textContent).toBe('12 × 9 = 108')
+    })
+
+    /**
+     * [radial(12), grid(3x3)] -- 108 instances, nothing truncated. Every
+     * preview below is normalised against a count this chain makes ambiguous.
+     */
+    function chainWithRamps() {
+      const doc = useStore.getState().doc
+      useStore.setState({
+        doc: {
+          ...doc,
+          layers: [
+            {
+              ...doc.layers[0],
+              repeaters: [
+                {
+                  type: 'radial', count: 12, radius: 180, startAngle: 0,
+                  spin: { base: 0, to: 90, source: 'index', curve: 'linear' },
+                },
+                {
+                  type: 'grid', rows: 3, cols: 3, spacingX: 20, spacingY: 20,
+                  spin: { base: 0, to: 90, source: 'index', curve: 'linear' },
+                },
+              ],
+              style: {
+                fill: {
+                  l: 0.6, c: 0.2, a: 1,
+                  h: { base: 0, to: 240, source: 'index', curve: 'linear' },
+                },
+              },
+            },
+          ],
+        },
+      })
+    }
+
+    const cellsOf = (label: string) =>
+      within(screen.getByLabelText(label)).getAllByTestId('ramp-cell')
+
+    it('previews a colour ramp over the innermost link, not the layer total', () => {
+      // Fill resolves against the instance context, whose innermost level is
+      // the grid: the engine emits 0, 30 .. 240 and restarts every 9 copies.
+      // Normalised against the layer's 108 the strip promised one smooth
+      // 24-cell sweep instead -- silently, with nothing truncated to warn on.
+      chainWithRamps()
+      render(<Inspector />)
+      const hues = cellsOf('fill hue preview')
+        .map((c) => Number(c.getAttribute('data-colour')!.split(' ')[2]))
+      expect(hues).toEqual([0, 30, 60, 90, 120, 150, 180, 210, 240])
+    })
+
+    it('previews each link’s own spin over that link’s copies', () => {
+      // The radial's spin sweeps its 12 copies and the grid's sweeps its 9.
+      // Neither sweeps the layer's 108, which is what both strips showed.
+      chainWithRamps()
+      render(<Inspector />)
+      expect(cellsOf('repeat 1 spin preview')).toHaveLength(12)
+      expect(cellsOf('repeat 2 spin preview')).toHaveLength(9)
+    })
+
+    it('previews a flatIndex ramp over the layer total, which is its denominator', () => {
+      // The one source that genuinely runs across every instance: 108 copies,
+      // sampled down to the strip's 24 cells. Answering the finding with the
+      // innermost count everywhere would make this 9 and be just as wrong.
+      chainWithRamps()
+      const doc = useStore.getState().doc
+      useStore.setState({
+        doc: {
+          ...doc,
+          layers: [
+            {
+              ...doc.layers[0],
+              style: {
+                fill: {
+                  ...doc.layers[0].style.fill!,
+                  l: { base: 0, to: 1, source: 'flatIndex', curve: 'linear' },
+                },
+              },
+            },
+          ],
+        },
+      })
+      render(<Inspector />)
+      expect(cellsOf('fill lightness preview')).toHaveLength(24)
+    })
+
+    it('shows a bare count for a link the budget cut short, product or no product', () => {
+      // Every number here is one the UI can actually produce: maxInstances is
+      // 100_000, radial count maxes at 200 and grid rows/cols at 40. The grid
+      // has 1600 cells, so 62 rings get a full grid, one gets 800 cells and
+      // the remaining 137 get nothing -- yet 100000 divides 200 exactly, so
+      // "200 × 500 = 100000" reads as arithmetic while naming a 500 that
+      // exists nowhere. The third link is worse: it claims one copy per
+      // parent from a repeater that never ran on most of them.
+      const doc = useStore.getState().doc
+      useStore.setState({
+        doc: {
+          ...doc,
+          layers: [
+            {
+              ...doc.layers[0],
+              repeaters: [
+                { type: 'radial', count: 200, radius: 180, startAngle: 0, spin: 0 },
+                { type: 'grid', rows: 40, cols: 40, spacingX: 10, spacingY: 10, spin: 0 },
+                { type: 'radial', count: 12, radius: 20, startAngle: 0, spin: 0 },
+              ],
+            },
+          ],
+        },
+      })
+      render(<Inspector />)
+      // Link 1 ran to completion, so its own count is still a fact.
+      expect(screen.getByTestId('repeater-count-0').textContent).toBe('200')
+      expect(screen.getByTestId('repeater-count-1').textContent).toBe('100000')
+      expect(screen.getByTestId('repeater-count-2').textContent).toBe('100000')
+    })
+
+    /** Replaces the selected layer's chain, leaving everything else alone. */
+    function withRepeaters(repeaters: RepeaterConfig[]) {
+      const doc = useStore.getState().doc
+      useStore.setState({
+        doc: { ...doc, layers: [{ ...doc.layers[0], repeaters }] },
+      })
+    }
+
+    it('shows a bare count for a link whose parents contributed unequally', () => {
+      // Link 2's count resolves against the parent context, so parent 0 makes
+      // 2 copies and parent 1 makes 4. Nothing is truncated and 6 divides 2
+      // exactly, so "2 × 3 = 6" reads as arithmetic while naming a 3 that no
+      // link in this document produces.
+      withRepeaters([
+        { type: 'radial', count: 2, radius: 100, startAngle: 0, spin: 0 },
+        {
+          type: 'radial',
+          count: { base: 2, to: 4, source: 'index', curve: 'linear' },
+          radius: 50, startAngle: 0, spin: 0,
+        },
+      ])
+      render(<Inspector />)
+      expect(screen.getByTestId('repeater-count-0').textContent).toBe('2')
+      expect(screen.getByTestId('repeater-count-1').textContent).toBe('6')
+    })
+
+    it('previews a link’s own spin over the layer total when its parents differ', () => {
+      // The same chain: the engine sweeps 2 copies under one parent and 4
+      // under the other, so there is no per-parent count to normalise
+      // against. Fall back to the layer's 6, as truncation already does.
+      withRepeaters([
+        { type: 'radial', count: 2, radius: 100, startAngle: 0, spin: 0 },
+        {
+          type: 'radial',
+          count: { base: 2, to: 4, source: 'index', curve: 'linear' },
+          radius: 50, startAngle: 0,
+          spin: { base: 0, to: 90, source: 'index', curve: 'linear' },
+        },
+      ])
+      render(<Inspector />)
+      expect(cellsOf('repeat 2 spin preview')).toHaveLength(6)
+      // The number alone is not the point: 6 cells sweep 0/18/36/54/72/90,
+      // four of which the canvas never draws, because the engine ramps parent
+      // 0's two copies 0/90 and parent 1's four 0/30/60/90. Borrowing
+      // truncation's fallback count without borrowing its caveat is what makes
+      // that strip a lie rather than an approximation.
+      expect(within(screen.getByTestId('card-repeater-1')).getByTestId('ramp-caveat').textContent)
+        .toContain('uneven copies')
+    })
+
+    it('leaves an even link below an uneven one with an exact preview and no caveat', () => {
+      // [radial(2), radial(count 2 → 4), radial(3)]: link 2 has no per-parent
+      // count, but every one of the 6 copies it produced then received exactly
+      // 3 children. Treating unevenness as contagious the way truncation is
+      // threw that fact away -- an 18-cell strip for a ramp the engine
+      // restarts every 3 copies, and a bare "18" for a true "6 × 3 = 18".
+      withRepeaters([
+        { type: 'radial', count: 2, radius: 100, startAngle: 0, spin: 0 },
+        {
+          type: 'radial',
+          count: { base: 2, to: 4, source: 'index', curve: 'linear' },
+          radius: 50, startAngle: 0, spin: 0,
+        },
+        {
+          type: 'radial', count: 3, radius: 20, startAngle: 0,
+          spin: { base: 0, to: 90, source: 'index', curve: 'linear' },
+        },
+      ])
+      render(<Inspector />)
+      expect(screen.getByTestId('repeater-count-1').textContent).toBe('6')
+      expect(screen.getByTestId('repeater-count-2').textContent).toBe('6 × 3 = 18')
+      expect(cellsOf('repeat 3 spin preview')).toHaveLength(3)
+      expect(within(screen.getByTestId('card-repeater-2')).queryByTestId('ramp-caveat')).toBeNull()
+    })
+
+    it('holds a repeater’s flatIndex ramp flat, because the engine does', () => {
+      // expandChain never assigns flatIndex or total: the root context's 0 and
+      // 1 ride through every link, so `resolve` returns base for all 12 copies
+      // and the canvas draws no spin at all. evaluate fills the real pair in
+      // afterwards, for the instance context, which is why the fill ramp below
+      // still sweeps the layer.
+      withRepeaters([
+        {
+          type: 'radial', count: 12, radius: 200, startAngle: 0,
+          spin: { base: 0, to: 90, source: 'flatIndex', curve: 'linear' },
+        },
+      ])
+      render(<Inspector />)
+      expect(cellsOf('repeat 1 spin preview')).toHaveLength(1)
+    })
+
+    it('previews a parent-resolved field over the link above it', () => {
+      // radius is resolved against the *parent* context, so the engine gives
+      // the four rings of link 1 four distinct radii and every copy within a
+      // ring the same one. Normalised against link 2's own 3 copies the strip
+      // showed three cells sweeping values the engine never produces.
+      withRepeaters([
+        { type: 'radial', count: 4, radius: 200, startAngle: 0, spin: 0 },
+        {
+          type: 'radial', count: 3,
+          radius: { base: 100, to: 300, source: 'index', curve: 'linear' },
+          startAngle: 0, spin: 0,
+        },
+      ])
+      render(<Inspector />)
+      expect(cellsOf('repeat 2 radius preview')).toHaveLength(4)
+    })
+
+    it('previews a parent-resolved field on the first link over its single root parent', () => {
+      // The first link's parent is the one root placement, where an `index`
+      // ramp has nothing to sweep: the engine holds radius flat at 100. One
+      // cell says that; twelve promise a sweep that never happens.
+      withRepeaters([
+        {
+          type: 'radial', count: 12,
+          radius: { base: 100, to: 300, source: 'index', curve: 'linear' },
+          startAngle: 0, spin: 0,
+        },
+      ])
+      render(<Inspector />)
+      expect(cellsOf('repeat 1 radius preview')).toHaveLength(1)
+    })
+  })
+})
+
+describe('chainCountLabel', () => {
+  it('shows the bare count for the first link', () => {
+    expect(chainCountLabel(1, 12, 0, false)).toBe('12')
+  })
+
+  it('shows a product for a later link', () => {
+    expect(chainCountLabel(12, 108, 1, false)).toBe('12 × 9 = 108')
+  })
+
+  it('drops the product when truncation makes it inexact', () => {
+    // 100 is not a multiple of 12, so no whole factorisation describes what
+    // happened. Printing "12 × 8.33 = 100" would assert something false.
+    expect(chainCountLabel(12, 100, 1, false)).toBe('100')
+  })
+
+  it('drops the product when the previous level is zero', () => {
+    expect(chainCountLabel(0, 0, 1, false)).toBe('0')
+  })
+
+  it('drops the product for a truncated level even when the division is exact', () => {
+    // The case the modulo guard cannot see, and the one the sliders actually
+    // reach: [radial(200), grid(40x40)] stops at the budget, and 100000 / 200
+    // is a clean 500. No 500 exists in that document -- the grid has 1600
+    // cells and 137 of the 200 rings received none of them.
+    expect(chainCountLabel(200, 100_000, 1, true)).toBe('100000')
+  })
+
+  it('drops the product for a link below a truncated one', () => {
+    // A third link expanding truncated parents cannot be an honest factor of
+    // them either: "100000 × 1 = 100000" claims each parent contributed one
+    // copy, when most contributed none.
+    expect(chainCountLabel(100_000, 100_000, 2, true)).toBe('100000')
+  })
+})
+
+describe('levelCopies', () => {
+  it('gives the first link its own count', () => {
+    expect(levelCopies([12, 108], [false, false], [true, true], 0, 108)).toBe(12)
+  })
+
+  it('gives a later link its contribution per parent copy', () => {
+    // 108 cumulative over 12 parents is 9 copies each -- the ramp a field on
+    // that link actually sweeps.
+    expect(levelCopies([12, 108], [false, false], [true, true], 1, 108)).toBe(9)
+  })
+
+  it('falls back to the layer total where the level was cut short', () => {
+    // 100000 / 200 is exactly 500, and 500 is a fiction: the grid has 1600
+    // cells and most rings got none. No contribution can be recovered from a
+    // truncated level, so hand back the layer total the caveat already covers
+    // rather than inventing one.
+    expect(levelCopies([200, 100_000], [false, true], [true, true], 1, 100_000)).toBe(100_000)
+  })
+
+  it('falls back for a link below a truncated one', () => {
+    expect(levelCopies([200, 100_000, 100_000], [false, true, false], [true, true, true], 2, 100_000)).toBe(100_000)
+  })
+
+  it('falls back where the level’s parents contributed unequally', () => {
+    // [radial(2), radial(count 2 → 4)]: 6 / 2 = 3, and no link makes 3.
+    // Nothing truncated, so only the uniformity flag can catch it.
+    expect(levelCopies([2, 6], [false, false], [true, false], 1, 6)).toBe(6)
+  })
+
+  it('divides normally at a uniform level below an uneven one', () => {
+    // [radial(2), radial(count 2 → 4), radial(3)]: level 1 has no single
+    // per-parent count, but all 6 of its copies then received exactly 3
+    // children, so 18 / 6 is a fact the engine confirmed.
+    expect(levelCopies([2, 6, 18], [false, false, false], [true, false, true], 2, 18)).toBe(3)
+  })
+
+  it('falls back when there is no such level', () => {
+    // A layer with no repeaters: one instance, no levels to divide.
+    expect(levelCopies([], [], [], -1, 1)).toBe(1)
+  })
+})
+
+describe('levelCaveat', () => {
+  it('is undefined when nothing was cut short', () => {
+    expect(levelCaveat([false, false], [true, true], 1)).toBeUndefined()
+  })
+
+  it('reports truncation at the level that was cut short', () => {
+    expect(levelCaveat([false, true], [true, true], 1)).toBe('truncated')
+  })
+
+  it('is undefined above the level that was cut short', () => {
+    // Level 0 ran to completion; its own count is still a fact.
+    expect(levelCaveat([false, true], [true, true], 0)).toBeUndefined()
+  })
+
+  it('keeps reporting truncation below the level that was cut short', () => {
+    // Everything downstream of a cut level is expanding an incomplete set of
+    // parents, so no product through it describes what happened.
+    expect(levelCaveat([false, true, false], [true, true, true], 2)).toBe('truncated')
+  })
+
+  it('reports unevenness at a level whose parents contributed unequally', () => {
+    // Nothing was truncated: the link's own count is modulated against the
+    // parent context, so each parent asked for a different number of copies.
+    expect(levelCaveat([false, false], [true, false], 1)).toBe('uneven')
+  })
+
+  it('is undefined above an uneven level', () => {
+    expect(levelCaveat([false, false], [true, false], 0)).toBeUndefined()
+  })
+
+  it('does not carry unevenness downward the way truncation carries', () => {
+    // The two do not have the same blast radius. A truncated level leaves the
+    // levels below it short; an uneven one does not -- its cumulative count is
+    // still exactly how many parents the next link received, so that link's
+    // own ratio is a fact again as soon as it expanded them evenly.
+    expect(levelCaveat([false, false, false], [true, false, true], 2)).toBeUndefined()
+  })
+
+  it('still reports an uneven level below an uneven one', () => {
+    expect(levelCaveat([false, false, false], [true, false, false], 2)).toBe('uneven')
   })
 })

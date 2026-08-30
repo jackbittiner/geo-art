@@ -3,6 +3,9 @@ import { evaluate } from './evaluate'
 import { applyPoint } from './transform'
 import { emptyDocument, defaultLayer } from '../document/defaults'
 import type { Document } from '../document/schema'
+// Fixtures here are always built as radial by defaultLayer/docWith, so this
+// narrowing is honest, not a cast papering over doubt about the union.
+import type { RadialConfig, RepeaterConfig } from './repeaters'
 
 function docWith(...mutate: ((d: Document) => void)[]): Document {
   const doc = emptyDocument()
@@ -19,7 +22,7 @@ describe('evaluate', () => {
   })
 
   it('produces one instance per repeater copy', () => {
-    const result = evaluate(docWith((d) => { d.layers[0].repeaters[0].count = 12 }))
+    const result = evaluate(docWith((d) => { (d.layers[0].repeaters[0] as RadialConfig).count = 12 }))
     expect(result.totalInstances).toBe(12)
     expect(result.layers[0].instances).toHaveLength(12)
     expect(result.perLayerCounts[result.layers[0].layerId]).toBe(12)
@@ -39,7 +42,7 @@ describe('evaluate', () => {
   })
 
   it('reuses one Path object when the shape is constant', () => {
-    const result = evaluate(docWith((d) => { d.layers[0].repeaters[0].count = 5 }))
+    const result = evaluate(docWith((d) => { (d.layers[0].repeaters[0] as RadialConfig).count = 5 }))
     const paths = result.layers[0].instances.map((i) => i.path)
     expect(new Set(paths).size).toBe(1)
   })
@@ -47,7 +50,7 @@ describe('evaluate', () => {
   it('rebuilds the path per instance when a shape field is modulated', () => {
     const result = evaluate(
       docWith((d) => {
-        d.layers[0].repeaters[0].count = 4
+        ;(d.layers[0].repeaters[0] as RadialConfig).count = 4
         d.layers[0].shape = {
           type: 'polygon',
           sides: { base: 3, to: 8, source: 'index', curve: 'linear' },
@@ -65,7 +68,7 @@ describe('evaluate', () => {
   it('resolves colour channels per instance', () => {
     const result = evaluate(
       docWith((d) => {
-        d.layers[0].repeaters[0].count = 3
+        ;(d.layers[0].repeaters[0] as RadialConfig).count = 3
         d.layers[0].style.fill = {
           l: 0.6,
           c: 0.2,
@@ -93,7 +96,7 @@ describe('evaluate', () => {
     const result = evaluate(
       docWith((d) => {
         d.maxInstances = 10
-        d.layers[0].repeaters[0].count = 50
+        ;(d.layers[0].repeaters[0] as RadialConfig).count = 50
       }),
     )
     expect(result.totalInstances).toBe(10)
@@ -109,7 +112,7 @@ describe('evaluate', () => {
     const result = evaluate(
       docWith((d) => {
         d.maxInstances = 10
-        d.layers[0].repeaters[0].count = 10_000_000
+        ;(d.layers[0].repeaters[0] as RadialConfig).count = 10_000_000
       }),
     )
     expect(result.totalInstances).toBe(10)
@@ -118,10 +121,26 @@ describe('evaluate', () => {
     expect(performance.now() - start).toBeLessThan(1000)
   })
 
+  it('leaves a repeater’s own flatIndex ramp constant, since expansion has no flatIndex', () => {
+    // The mirror of the test below: expandChain never assigns flatIndex or
+    // total, so a repeater field sourced on them resolves at the root
+    // context's 0 of 1 and every copy gets `base`. Read off the transforms'
+    // linear part, which is spin's alone -- the translation carries the ring.
+    const result = evaluate(
+      docWith((d) => {
+        const radial = d.layers[0].repeaters[0] as RadialConfig
+        radial.count = 12
+        radial.spin = { base: 0, to: 90, source: 'flatIndex', curve: 'linear' }
+      }),
+    )
+    const spins = result.layers[0].instances.map((i) => i.transform.slice(0, 4).join())
+    expect(new Set(spins).size).toBe(1)
+  })
+
   it('sets flatIndex and total on the context used for styling', () => {
     const result = evaluate(
       docWith((d) => {
-        d.layers[0].repeaters[0].count = 4
+        ;(d.layers[0].repeaters[0] as RadialConfig).count = 4
         d.layers[0].style.fill = {
           l: { base: 0, to: 1, source: 'flatIndex', curve: 'linear' },
           c: 0.1,
@@ -131,5 +150,154 @@ describe('evaluate', () => {
       }),
     )
     expect(result.layers[0].instances.map((i) => i.style.fill!.l)).toEqual([0, 1 / 3, 2 / 3, 1])
+  })
+})
+
+describe('per-level counts', () => {
+  it('reports the cumulative count after each link of the chain', () => {
+    // 3 and 4, not 3 and 3: distinct numbers at every level mean a cumulative
+    // count can never be mistaken for a per-level one, nor either for the
+    // layer total.
+    const doc = emptyDocument()
+    const layer = defaultLayer('halo')
+    layer.repeaters = [
+      { type: 'radial', count: 3, radius: 100, startAngle: 0, spin: 0 },
+      { type: 'grid', rows: 2, cols: 2, spacingX: 10, spacingY: 10, spin: 0 },
+    ]
+    doc.layers.push(layer)
+
+    const result = evaluate(doc)
+    expect(result.perLayerLevelCounts[layer.id]).toEqual([3, 12])
+    expect(result.perLayerCounts[layer.id]).toBe(12)
+  })
+
+  it('reports one entry per link even for a single-repeater chain', () => {
+    const doc = emptyDocument()
+    const layer = defaultLayer('halo')
+    doc.layers.push(layer)
+    expect(evaluate(doc).perLayerLevelCounts[layer.id]).toEqual([12])
+  })
+
+  it('reports which link of the chain the budget cut short', () => {
+    // The real ceiling and the real slider maxima: radial count tops out at
+    // 200, grid rows/cols at 40. The grid has 1600 cells, so the budget runs
+    // out 63 rings in -- and 100000 is still an exact multiple of 200, which
+    // is why the cumulative counts alone cannot reveal the truncation.
+    const doc = emptyDocument()
+    const layer = defaultLayer('halo')
+    layer.repeaters = [
+      { type: 'radial', count: 200, radius: 180, startAngle: 0, spin: 0 },
+      { type: 'grid', rows: 40, cols: 40, spacingX: 10, spacingY: 10, spin: 0 },
+    ]
+    doc.layers.push(layer)
+
+    const result = evaluate(doc)
+    expect(result.perLayerLevelCounts[layer.id]).toEqual([200, 100_000])
+    expect(result.perLayerLevelTruncated[layer.id]).toEqual([false, true])
+    expect(result.truncated).toBe(true)
+  })
+
+  it('marks no level as truncated when the whole chain fits', () => {
+    const doc = emptyDocument()
+    const layer = defaultLayer('halo')
+    layer.repeaters = [
+      { type: 'radial', count: 3, radius: 100, startAngle: 0, spin: 0 },
+      { type: 'grid', rows: 2, cols: 2, spacingX: 10, spacingY: 10, spin: 0 },
+    ]
+    doc.layers.push(layer)
+    expect(evaluate(doc).perLayerLevelTruncated[layer.id]).toEqual([false, false])
+  })
+
+  it('gives a hidden layer an empty level list', () => {
+    const doc = emptyDocument()
+    const layer = defaultLayer('halo')
+    layer.visible = false
+    doc.layers.push(layer)
+    expect(evaluate(doc).perLayerLevelCounts[layer.id]).toEqual([])
+    expect(evaluate(doc).perLayerLevelTruncated[layer.id]).toEqual([])
+    expect(evaluate(doc).perLayerLevelUniform[layer.id]).toEqual([])
+  })
+
+  it('reports a link whose parents each contributed the same count as uniform', () => {
+    const doc = emptyDocument()
+    const layer = defaultLayer('halo')
+    layer.repeaters = [
+      { type: 'radial', count: 3, radius: 100, startAngle: 0, spin: 0 },
+      { type: 'grid', rows: 2, cols: 2, spacingX: 10, spacingY: 10, spin: 0 },
+    ]
+    doc.layers.push(layer)
+    expect(evaluate(doc).perLayerLevelUniform[layer.id]).toEqual([true, true])
+  })
+
+  it('reports a link whose parents contributed different counts as non-uniform', () => {
+    // A later link's `count` resolves against the *parent* context, so it can
+    // legitimately differ per parent with no budget pressure at all: parent 0
+    // gets u = 0 and 2 children, parent 1 gets u = 1 and 4. The cumulative 6
+    // divides its parent 2 exactly, and truncation never happened, so nothing
+    // else in the result can reveal that no link here produces 3.
+    const doc = emptyDocument()
+    const layer = defaultLayer('halo')
+    layer.repeaters = [
+      { type: 'radial', count: 2, radius: 100, startAngle: 0, spin: 0 },
+      {
+        type: 'radial',
+        count: { base: 2, to: 4, source: 'index', curve: 'linear' },
+        radius: 50, startAngle: 0, spin: 0,
+      },
+    ]
+    doc.layers.push(layer)
+
+    const result = evaluate(doc)
+    expect(result.perLayerLevelCounts[layer.id]).toEqual([2, 6])
+    expect(result.perLayerLevelTruncated[layer.id]).toEqual([false, false])
+    expect(result.perLayerLevelUniform[layer.id]).toEqual([true, false])
+  })
+
+  it('composes the chain in order, not merely to the right total', () => {
+    // [radial(3), grid(2x2)] and [grid(2x2), radial(3)] both yield 12
+    // instances, so a total-only assertion passes against a chain composed
+    // backwards. Assert a position instead.
+    const build = (repeaters: RepeaterConfig[]) => {
+      const doc = emptyDocument()
+      const layer = defaultLayer('halo')
+      layer.shape = { type: 'polygon', sides: 4, radius: 1, rotation: 0 }
+      layer.repeaters = repeaters
+      doc.layers.push(layer)
+      return evaluate(doc).layers[0].instances
+    }
+    const radialFirst = build([
+      { type: 'radial', count: 3, radius: 100, startAngle: 0, spin: 0 },
+      { type: 'grid', rows: 2, cols: 2, spacingX: 10, spacingY: 10, spin: 0 },
+    ])
+    const gridFirst = build([
+      { type: 'grid', rows: 2, cols: 2, spacingX: 10, spacingY: 10, spin: 0 },
+      { type: 'radial', count: 3, radius: 100, startAngle: 0, spin: 0 },
+    ])
+
+    expect(radialFirst).toHaveLength(12)
+    expect(gridFirst).toHaveLength(12)
+
+    // Radial first: instance 0 is the first grid cell around the first ring
+    // copy, so it sits at (100, 0) + (-5, -5).
+    const a = applyPoint(radialFirst[0].transform, { x: 0, y: 0 })
+    expect(a.x).toBeCloseTo(95, 9)
+    expect(a.y).toBeCloseTo(-5, 9)
+
+    // Grid first: instance 0 is the first ring copy around the first grid
+    // cell, so it sits at (-5, -5) + (100, 0).
+    const b = applyPoint(gridFirst[0].transform, { x: 0, y: 0 })
+    expect(b.x).toBeCloseTo(95, 9)
+    expect(b.y).toBeCloseTo(-5, 9)
+
+    // Those two coincide, which is exactly why a single sample proves
+    // nothing. Instance 1 is where the orders diverge: radial-first steps to
+    // the next grid cell (+10 in x), grid-first steps to the next ring copy.
+    const a1 = applyPoint(radialFirst[1].transform, { x: 0, y: 0 })
+    expect(a1.x).toBeCloseTo(105, 9)
+    expect(a1.y).toBeCloseTo(-5, 9)
+
+    const b1 = applyPoint(gridFirst[1].transform, { x: 0, y: 0 })
+    expect(b1.x).toBeCloseTo(-5 + 100 * Math.cos((2 * Math.PI) / 3), 9)
+    expect(b1.y).toBeCloseTo(-5 + 100 * Math.sin((2 * Math.PI) / 3), 9)
   })
 })

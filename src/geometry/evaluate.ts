@@ -51,17 +51,42 @@ function resolveStyle(style: StyleConfig, ctx: EvalContext): ResolvedStyle {
  * remaining budget, so a resolved copy count in the millions never gets
  * fully built before being discarded.
  */
-function expandChain(layer: Layer, budget: number): { nodes: Placement[]; truncated: boolean } {
+function expandChain(
+  layer: Layer,
+  budget: number,
+): {
+  nodes: Placement[]
+  truncated: boolean
+  levelCounts: number[]
+  levelTruncated: boolean[]
+  levelUniform: boolean[]
+} {
   let nodes: Placement[] = [{ transform: IDENTITY, ctx: rootContext() }]
-  let truncated = false
+  const levelCounts: number[] = []
+  // Per level, not one flag for the chain: the inspector reports each link's
+  // count as a product of the level above, and that product is only true
+  // where every level up to and including it ran to completion. Which level
+  // was cut is the only thing that distinguishes an honest factorisation
+  // from an invented one, and the chain-wide flag has already lost it.
+  const levelTruncated: boolean[] = []
+  // Truncation is not the only way a cumulative count stops factorising. A
+  // link's `count` (or `rows`/`cols`) is a Field resolved against the *parent*
+  // context, so it may legitimately differ from parent to parent with no
+  // budget pressure at all: [radial(2), radial(count 2 -> 4)] emits 2 children
+  // under one parent and 4 under the other, and 6 / 2 = 3 names a link that
+  // does not exist. Only the expansion can see this, so it records it.
+  const levelUniform: boolean[] = []
 
   for (const config of layer.repeaters) {
     const repeater = getRepeater(config.type)
     const next: Placement[] = []
+    let cutHere = false
+    let perParent: number | null = null
+    let uniform = true
     for (const node of nodes) {
       const remaining = budget - next.length
       if (remaining <= 0) {
-        truncated = true
+        cutHere = true
         break
       }
       const children = repeater.expand(config, node.ctx, remaining)
@@ -73,21 +98,35 @@ function expandChain(layer: Layer, budget: number): { nodes: Placement[]; trunca
       // remaining budget, which is not truncation).
       if (children.length > 0) {
         const level = children[0].ctx.counts.length - 1
-        if (children.length < children[0].ctx.counts[level]) truncated = true
+        if (children.length < children[0].ctx.counts[level]) cutHere = true
       }
+      if (perParent === null) perParent = children.length
+      else if (children.length !== perParent) uniform = false
       for (const child of children) {
         next.push({ transform: compose(node.transform, child.transform), ctx: child.ctx })
       }
     }
     nodes = next
+    levelCounts.push(nodes.length)
+    levelTruncated.push(cutHere)
+    levelUniform.push(uniform)
   }
 
-  return { nodes, truncated }
+  return {
+    nodes,
+    truncated: levelTruncated.some(Boolean),
+    levelCounts,
+    levelTruncated,
+    levelUniform,
+  }
 }
 
 export function evaluate(doc: Document): EvaluationResult {
   const layers: EvaluationResult['layers'] = []
   const perLayerCounts: Record<string, number> = {}
+  const perLayerLevelCounts: Record<string, number[]> = {}
+  const perLayerLevelTruncated: Record<string, boolean[]> = {}
+  const perLayerLevelUniform: Record<string, boolean[]> = {}
   let totalInstances = 0
   let truncated = false
 
@@ -97,6 +136,9 @@ export function evaluate(doc: Document): EvaluationResult {
     if (!layer.visible || budget <= 0) {
       if (layer.visible) truncated = true
       perLayerCounts[layer.id] = 0
+      perLayerLevelCounts[layer.id] = []
+      perLayerLevelTruncated[layer.id] = []
+      perLayerLevelUniform[layer.id] = []
       layers.push({ layerId: layer.id, instances: [] })
       continue
     }
@@ -117,9 +159,20 @@ export function evaluate(doc: Document): EvaluationResult {
     })
 
     perLayerCounts[layer.id] = instances.length
+    perLayerLevelCounts[layer.id] = expansion.levelCounts
+    perLayerLevelTruncated[layer.id] = expansion.levelTruncated
+    perLayerLevelUniform[layer.id] = expansion.levelUniform
     totalInstances += instances.length
     layers.push({ layerId: layer.id, instances })
   }
 
-  return { layers, totalInstances, truncated, perLayerCounts }
+  return {
+    layers,
+    totalInstances,
+    truncated,
+    perLayerCounts,
+    perLayerLevelCounts,
+    perLayerLevelTruncated,
+    perLayerLevelUniform,
+  }
 }

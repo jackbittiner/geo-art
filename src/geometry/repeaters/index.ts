@@ -1,8 +1,10 @@
+import { grid } from './grid'
 import { radial } from './radial'
 import type { Repeater, RepeaterConfig, RepeaterType } from './types'
 
 const REGISTRY: Record<RepeaterType, Repeater<never>> = {
   radial: radial as Repeater<never>,
+  grid: grid as Repeater<never>,
 }
 
 export function getRepeater(type: RepeaterType): Repeater<RepeaterConfig> {
@@ -11,5 +13,7 @@ export function getRepeater(type: RepeaterType): Repeater<RepeaterConfig> {
   return found as Repeater<RepeaterConfig>
 }
 
-export { radial }
-export type { Placement, Repeater, RepeaterConfig, RepeaterType, RadialConfig } from './types'
+export { grid, radial }
+export type {
+  Placement, Repeater, RepeaterConfig, RepeaterType, RadialConfig, GridConfig,
+} from './types'

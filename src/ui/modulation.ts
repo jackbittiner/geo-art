@@ -25,6 +25,29 @@ function rampTarget(descriptor: FieldDescriptor, base: number): number {
   }
 }
 
+/**
+ * Where a field is resolved, which is what a `flatIndex` ramp on it sweeps.
+ *
+ * A repeater's own fields are resolved during expansion, where `flatIndex` and
+ * `total` are still the root context's 0 and 1 -- expandChain never assigns
+ * them, and evaluate fills them in afterwards, per instance. So a repeater
+ * field sourced on flatIndex is constant at `base` for every copy. Shape,
+ * colour and stroke fields are resolved against that instance context and do
+ * sweep the whole layer.
+ */
+export type FieldResolution = 'expansion' | 'instance'
+
+/**
+ * Why a preview's denominator is not the count the engine normalised against.
+ * Undefined where the two agree.
+ *
+ * 'truncated': the instance budget cut the link short, so the strip is spread
+ * over the copies that survived rather than the copies the repeater intended.
+ * 'uneven': the link's parents each asked for a different number of copies, so
+ * there is no single per-parent count to spread anything over.
+ */
+export type PreviewCaveat = 'truncated' | 'uneven'
+
 /** The strip is ~150px wide; more cells than this render as slivers. */
 export const PREVIEW_CELLS = 24
 

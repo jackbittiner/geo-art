@@ -42,6 +42,11 @@ export type FieldDescriptor = {
    * even with a single repeater. The `~` toggle renders only where this is
    * set: radial's count, radius and startAngle resolve against the *parent*
    * context and would silently do nothing. See spec §4a.
+   *
+   * Which context a field resolves against is declared here rather than
+   * assumed at the call site, because the Inspector also picks a ramp
+   * preview's denominator from it: a child-resolved field sweeps its own
+   * link's copies, a parent-resolved one sweeps the link above.
    */
   perCopy?: boolean
 }
@@ -72,6 +77,19 @@ export const REPEATER_FIELDS: Record<RepeaterType, FieldDescriptor[]> = {
     { key: 'count', label: 'count', min: 1, max: 200, step: 1 },
     { key: 'radius', label: 'radius', min: 0, max: 800, unit: 'px' },
     { key: 'startAngle', label: 'start', min: -360, max: 360, unit: '°' },
+    {
+      key: 'spin', label: 'spin', min: -360, max: 360, unit: '°',
+      perCopy: true, wraps: true, rampTo: { kind: 'offset', delta: 360 },
+    },
+  ],
+  // The grid card's field bounds. Rows/cols/spacing follow radial's own
+  // count/radius conventions, and like radial's count they resolve against the
+  // parent context: no perCopy, no toggle.
+  grid: [
+    { key: 'rows', label: 'rows', min: 1, max: 40, step: 1 },
+    { key: 'cols', label: 'cols', min: 1, max: 40, step: 1 },
+    { key: 'spacingX', label: 'spacing x', min: 0, max: 400, unit: 'px' },
+    { key: 'spacingY', label: 'spacing y', min: 0, max: 400, unit: 'px' },
     {
       key: 'spin', label: 'spin', min: -360, max: 360, unit: '°',
       perCopy: true, wraps: true, rampTo: { kind: 'offset', delta: 360 },

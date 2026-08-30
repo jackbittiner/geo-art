@@ -11,7 +11,15 @@ const count = REPEATER_FIELDS.radial.find((d) => d.key === 'count')!
 function setup(value: Field, descriptor = hue, scope = 'fill') {
   const onChange = vi.fn()
   render(
-    <FieldRow scope={scope} descriptor={descriptor} value={value} count={12} onChange={onChange} />,
+    <FieldRow
+      scope={scope}
+      descriptor={descriptor}
+      value={value}
+      count={12}
+      layerCount={12}
+      resolution="instance"
+      onChange={onChange}
+    />,
   )
   return { onChange }
 }
@@ -82,7 +90,7 @@ describe('FieldRow', () => {
   it('commits the gesture when the pointer is released', () => {
     const onCommit = vi.fn()
     render(
-      <FieldRow scope="fill" descriptor={hue} value={280} count={12} onChange={vi.fn()} onCommit={onCommit} />,
+      <FieldRow scope="fill" descriptor={hue} value={280} count={12} layerCount={12} resolution="instance" onChange={vi.fn()} onCommit={onCommit} />,
     )
     fireEvent.pointerUp(screen.getByLabelText('fill hue'))
     expect(onCommit).toHaveBeenCalledTimes(1)
@@ -94,7 +102,7 @@ describe('FieldRow', () => {
   it('commits the modulate toggle, so it opens no lingering group', () => {
     const onCommit = vi.fn()
     render(
-      <FieldRow scope="fill" descriptor={hue} value={280} count={12} onChange={vi.fn()} onCommit={onCommit} />,
+      <FieldRow scope="fill" descriptor={hue} value={280} count={12} layerCount={12} resolution="instance" onChange={vi.fn()} onCommit={onCommit} />,
     )
     fireEvent.click(screen.getByRole('button', { name: 'fill hue modulate' }))
     expect(onCommit).toHaveBeenCalledTimes(1)
@@ -111,6 +119,8 @@ describe('FieldRow', () => {
         descriptor={hue}
         value={{ base: 280, to: 400, source: 'index', curve: 'linear' }}
         count={12}
+        layerCount={12}
+        resolution="instance"
         onChange={vi.fn()}
         onCommit={onCommit}
       />,
@@ -124,7 +134,7 @@ describe('FieldRow', () => {
     // afternoon of nudges into one undo entry.
     const onCommit = vi.fn()
     render(
-      <FieldRow scope="fill" descriptor={hue} value={280} count={12} onChange={vi.fn()} onCommit={onCommit} />,
+      <FieldRow scope="fill" descriptor={hue} value={280} count={12} layerCount={12} resolution="instance" onChange={vi.fn()} onCommit={onCommit} />,
     )
     fireEvent.blur(screen.getByLabelText('fill hue'))
     expect(onCommit).toHaveBeenCalledTimes(1)
