@@ -78,4 +78,24 @@ describe('FieldRow', () => {
     expect(slider.id).toBe('field-repeat-1-spin')
     expect(slider.id).not.toContain(' ')
   })
+
+  it('commits the gesture when the pointer is released', () => {
+    const onCommit = vi.fn()
+    render(
+      <FieldRow scope="fill" descriptor={hue} value={280} count={12} onChange={vi.fn()} onCommit={onCommit} />,
+    )
+    fireEvent.pointerUp(screen.getByLabelText('fill hue'))
+    expect(onCommit).toHaveBeenCalledTimes(1)
+  })
+
+  it('commits the gesture on blur, for keyboard-driven changes', () => {
+    // Arrow keys fire no pointer events, so release alone would merge an
+    // afternoon of nudges into one undo entry.
+    const onCommit = vi.fn()
+    render(
+      <FieldRow scope="fill" descriptor={hue} value={280} count={12} onChange={vi.fn()} onCommit={onCommit} />,
+    )
+    fireEvent.blur(screen.getByLabelText('fill hue'))
+    expect(onCommit).toHaveBeenCalledTimes(1)
+  })
 })

@@ -21,6 +21,8 @@ type Props = {
   truncated?: boolean
   toColour?: (value: number) => string
   onChange: (value: Field) => void
+  /** Ends the coalesce group — fired on pointer release and on blur. */
+  onCommit?: () => void
 }
 
 /** HTML forbids spaces in an id; "repeat 1" has to become "repeat-1". */
@@ -28,7 +30,7 @@ const slugify = (scope: string) =>
   scope.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
 
 export default function FieldRow({
-  scope, descriptor, value, count, truncated, toColour, onChange,
+  scope, descriptor, value, count, truncated, toColour, onChange, onCommit,
 }: Props) {
   const idPrefix = `field-${slugify(scope)}-${descriptor.key}`
   const accessibleName = `${scope} ${descriptor.label}`
@@ -57,6 +59,8 @@ export default function FieldRow({
             const next = Number(e.target.value)
             onChange(modulated ? { ...value, base: next } : next)
           }}
+          onPointerUp={onCommit}
+          onBlur={onCommit}
         />
         <span className="w-12 shrink-0 text-right tabular-nums text-neutral-300">
           {Number(base.toFixed(3))}
@@ -90,6 +94,7 @@ export default function FieldRow({
           truncated={truncated}
           toColour={toColour}
           onChange={onChange}
+          onCommit={onCommit}
         />
       )}
     </div>

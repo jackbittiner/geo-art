@@ -4,11 +4,12 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import Inspector from './Inspector'
 import { useStore } from '../state/store'
 import { emptyDocument, defaultLayer, DEFAULT_FILL, DEFAULT_STROKE } from '../document/defaults'
+import { emptyHistory } from '../state/history'
 
 function seed() {
   const doc = emptyDocument()
   doc.layers.push(defaultLayer('halo'))
-  useStore.setState({ doc, selectedLayerId: doc.layers[0].id })
+  useStore.setState({ doc, selectedLayerId: doc.layers[0].id, history: emptyHistory() })
   return doc
 }
 
@@ -541,5 +542,24 @@ describe('Inspector', () => {
     expect(screen.queryByRole('button', { name: 'repeat 1 radius modulate' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'repeat 1 start modulate' })).toBeNull()
     expect(screen.getByRole('button', { name: 'repeat 1 spin modulate' })).toBeDefined()
+  })
+
+  it('gives each row a coalesce key so one drag is one undo step', () => {
+    render(<Inspector />)
+    const slider = screen.getByLabelText('shape radius')
+    fireEvent.change(slider, { target: { value: '100' } })
+    fireEvent.change(slider, { target: { value: '200' } })
+    expect(useStore.getState().history.past).toHaveLength(1)
+    useStore.getState().undo()
+    expect((useStore.getState().doc.layers[0].shape as { radius: number }).radius).toBe(60)
+  })
+
+  it('ends the group when a slider is released', () => {
+    render(<Inspector />)
+    const slider = screen.getByLabelText('shape radius')
+    fireEvent.change(slider, { target: { value: '100' } })
+    fireEvent.pointerUp(slider)
+    fireEvent.change(slider, { target: { value: '200' } })
+    expect(useStore.getState().history.past).toHaveLength(2)
   })
 })
