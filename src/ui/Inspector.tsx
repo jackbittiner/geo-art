@@ -1,6 +1,7 @@
 import { setFillChannel, setRepeaterField, setShapeField, setShapeType } from '../document/ops'
 import type { ShapeType } from '../document/schema'
-import type { Field } from '../geometry/field'
+import { isModulated, type Field } from '../geometry/field'
+import { colourToCss } from '../render/colour'
 import { useStore } from '../state/store'
 import FieldRow from './controls/FieldRow'
 import { COLOUR_FIELDS, REPEATER_FIELDS, SHAPE_FIELDS } from './descriptors'
@@ -28,6 +29,21 @@ export default function Inspector() {
   const count = result.perLayerCounts[layer.id] ?? 0
   const shapeRecord = layer.shape as unknown as Record<string, Field>
 
+  // A swatch needs all four channels, but a channel's ramp only supplies its
+  // own. The others come from the layer, using `base` where they are
+  // themselves modulated. Only the Inspector has this, which is why
+  // RampPreview takes a mapper rather than a colour.
+  const channelBase = (field: Field): number => (isModulated(field) ? field.base : field)
+  const fillSwatch = (channel: 'l' | 'c' | 'h' | 'a') => (value: number) => {
+    const fill = layer.style.fill!
+    return colourToCss({
+      l: channel === 'l' ? value : channelBase(fill.l),
+      c: channel === 'c' ? value : channelBase(fill.c),
+      h: channel === 'h' ? value : channelBase(fill.h),
+      a: channel === 'a' ? value : channelBase(fill.a),
+    })
+  }
+
   return (
     <div className="h-full overflow-y-auto text-xs">
       <div className={CARD} data-testid="card-shape">
@@ -49,6 +65,7 @@ export default function Inspector() {
             scope="shape"
             descriptor={descriptor}
             value={shapeRecord[descriptor.key]}
+            count={count}
             onChange={(v) => apply((d) => setShapeField(d, layer.id, descriptor.key, v))}
           />
         ))}
@@ -71,6 +88,7 @@ export default function Inspector() {
                 scope={scope}
                 descriptor={descriptor}
                 value={record[descriptor.key]}
+                count={count}
                 onChange={(v) => apply((d) => setRepeaterField(d, layer.id, index, descriptor.key, v))}
               />
             ))}
@@ -92,6 +110,8 @@ export default function Inspector() {
               scope="fill"
               descriptor={descriptor}
               value={layer.style.fill![descriptor.key as 'l' | 'c' | 'h' | 'a']}
+              count={count}
+              toColour={fillSwatch(descriptor.key as 'l' | 'c' | 'h' | 'a')}
               onChange={(v) =>
                 apply((d) => setFillChannel(d, layer.id, descriptor.key as 'l' | 'c' | 'h' | 'a', v))
               }

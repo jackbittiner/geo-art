@@ -211,4 +211,56 @@ describe('Inspector', () => {
     // And rendering alone wrote nothing: the document is the same object.
     expect(useStore.getState().doc).toBe(before)
   })
+
+  it('previews a colour ramp against the layer real copy count', () => {
+    const doc = useStore.getState().doc
+    useStore.setState({
+      doc: {
+        ...doc,
+        layers: [
+          {
+            ...doc.layers[0],
+            repeaters: [{ ...doc.layers[0].repeaters[0], count: 5 }],
+            style: {
+              fill: { l: 0.6, c: 0.2, h: { base: 0, to: 240, source: 'index', curve: 'linear' }, a: 1 },
+            },
+          },
+        ],
+      },
+    })
+    render(<Inspector />)
+    expect(screen.getAllByTestId('ramp-cell')).toHaveLength(5)
+  })
+
+  it('builds hue swatches from the layer other channels', () => {
+    const doc = useStore.getState().doc
+    useStore.setState({
+      doc: {
+        ...doc,
+        layers: [
+          {
+            ...doc.layers[0],
+            repeaters: [{ ...doc.layers[0].repeaters[0], count: 2 }],
+            style: {
+              fill: { l: 0.6, c: 0.2, h: { base: 0, to: 240, source: 'index', curve: 'linear' }, a: 0.5 },
+            },
+          },
+        ],
+      },
+    })
+    render(<Inspector />)
+    const cells = screen.getAllByTestId('ramp-cell')
+    // Lightness, chroma and alpha come from the layer; only hue varies.
+    // Read data-colour rather than style: jsdom rewrites 60% as 0.6.
+    expect(cells[0].getAttribute('data-colour')).toBe('oklch(60% 0.2 0 / 0.5)')
+    expect(cells[1].getAttribute('data-colour')).toBe('oklch(60% 0.2 240 / 0.5)')
+  })
+
+  it('offers no modulate toggle on the repeater fields that cannot vary', () => {
+    render(<Inspector />)
+    expect(screen.queryByRole('button', { name: 'repeat 1 count modulate' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'repeat 1 radius modulate' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'repeat 1 start modulate' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'repeat 1 spin modulate' })).toBeDefined()
+  })
 })
