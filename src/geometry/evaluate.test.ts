@@ -121,6 +121,22 @@ describe('evaluate', () => {
     expect(performance.now() - start).toBeLessThan(1000)
   })
 
+  it('leaves a repeater’s own flatIndex ramp constant, since expansion has no flatIndex', () => {
+    // The mirror of the test below: expandChain never assigns flatIndex or
+    // total, so a repeater field sourced on them resolves at the root
+    // context's 0 of 1 and every copy gets `base`. Read off the transforms'
+    // linear part, which is spin's alone -- the translation carries the ring.
+    const result = evaluate(
+      docWith((d) => {
+        const radial = d.layers[0].repeaters[0] as RadialConfig
+        radial.count = 12
+        radial.spin = { base: 0, to: 90, source: 'flatIndex', curve: 'linear' }
+      }),
+    )
+    const spins = result.layers[0].instances.map((i) => i.transform.slice(0, 4).join())
+    expect(new Set(spins).size).toBe(1)
+  })
+
   it('sets flatIndex and total on the context used for styling', () => {
     const result = evaluate(
       docWith((d) => {

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { render, screen, fireEvent, within } from '@testing-library/react'
 import { describe, it, expect, beforeEach } from 'vitest'
-import Inspector, { chainCountLabel, levelCopies, unrecoverableThrough } from './Inspector'
+import Inspector, { chainCountLabel, levelCaveat, levelCopies } from './Inspector'
 import { useStore } from '../state/store'
 import { emptyDocument, defaultLayer, DEFAULT_FILL, DEFAULT_STROKE } from '../document/defaults'
 import { emptyHistory } from '../state/history'
@@ -475,7 +475,7 @@ describe('Inspector', () => {
       },
     })
     render(<Inspector />)
-    expect(screen.getAllByTestId('ramp-truncated').length).toBeGreaterThan(0)
+    expect(screen.getAllByTestId('ramp-caveat').length).toBeGreaterThan(0)
   })
 
   it('shows no truncation warning when the whole document fits', () => {
@@ -494,7 +494,7 @@ describe('Inspector', () => {
       },
     })
     render(<Inspector />)
-    expect(screen.queryByTestId('ramp-truncated')).toBeNull()
+    expect(screen.queryByTestId('ramp-caveat')).toBeNull()
   })
 
   // The swatch fixtures above give every sibling channel as a plain number, so
@@ -831,6 +831,54 @@ describe('Inspector', () => {
       ])
       render(<Inspector />)
       expect(cellsOf('repeat 2 spin preview')).toHaveLength(6)
+      // The number alone is not the point: 6 cells sweep 0/18/36/54/72/90,
+      // four of which the canvas never draws, because the engine ramps parent
+      // 0's two copies 0/90 and parent 1's four 0/30/60/90. Borrowing
+      // truncation's fallback count without borrowing its caveat is what makes
+      // that strip a lie rather than an approximation.
+      expect(within(screen.getByTestId('card-repeater-1')).getByTestId('ramp-caveat').textContent)
+        .toContain('uneven copies')
+    })
+
+    it('leaves an even link below an uneven one with an exact preview and no caveat', () => {
+      // [radial(2), radial(count 2 → 4), radial(3)]: link 2 has no per-parent
+      // count, but every one of the 6 copies it produced then received exactly
+      // 3 children. Treating unevenness as contagious the way truncation is
+      // threw that fact away -- an 18-cell strip for a ramp the engine
+      // restarts every 3 copies, and a bare "18" for a true "6 × 3 = 18".
+      withRepeaters([
+        { type: 'radial', count: 2, radius: 100, startAngle: 0, spin: 0 },
+        {
+          type: 'radial',
+          count: { base: 2, to: 4, source: 'index', curve: 'linear' },
+          radius: 50, startAngle: 0, spin: 0,
+        },
+        {
+          type: 'radial', count: 3, radius: 20, startAngle: 0,
+          spin: { base: 0, to: 90, source: 'index', curve: 'linear' },
+        },
+      ])
+      render(<Inspector />)
+      expect(screen.getByTestId('repeater-count-1').textContent).toBe('6')
+      expect(screen.getByTestId('repeater-count-2').textContent).toBe('6 × 3 = 18')
+      expect(cellsOf('repeat 3 spin preview')).toHaveLength(3)
+      expect(within(screen.getByTestId('card-repeater-2')).queryByTestId('ramp-caveat')).toBeNull()
+    })
+
+    it('holds a repeater’s flatIndex ramp flat, because the engine does', () => {
+      // expandChain never assigns flatIndex or total: the root context's 0 and
+      // 1 ride through every link, so `resolve` returns base for all 12 copies
+      // and the canvas draws no spin at all. evaluate fills the real pair in
+      // afterwards, for the instance context, which is why the fill ramp below
+      // still sweeps the layer.
+      withRepeaters([
+        {
+          type: 'radial', count: 12, radius: 200, startAngle: 0,
+          spin: { base: 0, to: 90, source: 'flatIndex', curve: 'linear' },
+        },
+      ])
+      render(<Inspector />)
+      expect(cellsOf('repeat 1 spin preview')).toHaveLength(1)
     })
 
     it('previews a parent-resolved field over the link above it', () => {
@@ -931,45 +979,58 @@ describe('levelCopies', () => {
     expect(levelCopies([2, 6], [false, false], [true, false], 1, 6)).toBe(6)
   })
 
+  it('divides normally at a uniform level below an uneven one', () => {
+    // [radial(2), radial(count 2 → 4), radial(3)]: level 1 has no single
+    // per-parent count, but all 6 of its copies then received exactly 3
+    // children, so 18 / 6 is a fact the engine confirmed.
+    expect(levelCopies([2, 6, 18], [false, false, false], [true, false, true], 2, 18)).toBe(3)
+  })
+
   it('falls back when there is no such level', () => {
     // A layer with no repeaters: one instance, no levels to divide.
     expect(levelCopies([], [], [], -1, 1)).toBe(1)
   })
 })
 
-describe('unrecoverableThrough', () => {
-  it('is false when nothing was cut short', () => {
-    expect(unrecoverableThrough([false, false], [true, true], 1)).toBe(false)
+describe('levelCaveat', () => {
+  it('is undefined when nothing was cut short', () => {
+    expect(levelCaveat([false, false], [true, true], 1)).toBeUndefined()
   })
 
-  it('is true at the level that was cut short', () => {
-    expect(unrecoverableThrough([false, true], [true, true], 1)).toBe(true)
+  it('reports truncation at the level that was cut short', () => {
+    expect(levelCaveat([false, true], [true, true], 1)).toBe('truncated')
   })
 
-  it('is false above the level that was cut short', () => {
+  it('is undefined above the level that was cut short', () => {
     // Level 0 ran to completion; its own count is still a fact.
-    expect(unrecoverableThrough([false, true], [true, true], 0)).toBe(false)
+    expect(levelCaveat([false, true], [true, true], 0)).toBeUndefined()
   })
 
-  it('stays true below the level that was cut short', () => {
+  it('keeps reporting truncation below the level that was cut short', () => {
     // Everything downstream of a cut level is expanding an incomplete set of
     // parents, so no product through it describes what happened.
-    expect(unrecoverableThrough([false, true, false], [true, true, true], 2)).toBe(true)
+    expect(levelCaveat([false, true, false], [true, true, true], 2)).toBe('truncated')
   })
 
-  it('is true at a level whose parents contributed unequally', () => {
+  it('reports unevenness at a level whose parents contributed unequally', () => {
     // Nothing was truncated: the link's own count is modulated against the
     // parent context, so each parent asked for a different number of copies.
-    expect(unrecoverableThrough([false, false], [true, false], 1)).toBe(true)
+    expect(levelCaveat([false, false], [true, false], 1)).toBe('uneven')
   })
 
-  it('is false above a non-uniform level', () => {
-    expect(unrecoverableThrough([false, false], [true, false], 0)).toBe(false)
+  it('is undefined above an uneven level', () => {
+    expect(levelCaveat([false, false], [true, false], 0)).toBeUndefined()
   })
 
-  it('stays true below a non-uniform level', () => {
-    // Same propagation as truncation, for the same reason: a link below one
-    // cannot factor a set of parents that itself has no single factor.
-    expect(unrecoverableThrough([false, false, false], [true, false, true], 2)).toBe(true)
+  it('does not carry unevenness downward the way truncation carries', () => {
+    // The two do not have the same blast radius. A truncated level leaves the
+    // levels below it short; an uneven one does not -- its cumulative count is
+    // still exactly how many parents the next link received, so that link's
+    // own ratio is a fact again as soon as it expanded them evenly.
+    expect(levelCaveat([false, false, false], [true, false, true], 2)).toBeUndefined()
+  })
+
+  it('still reports an uneven level below an uneven one', () => {
+    expect(levelCaveat([false, false, false], [true, false, false], 2)).toBe('uneven')
   })
 })

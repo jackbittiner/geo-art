@@ -1,7 +1,7 @@
 import { EASINGS, type Easing } from '../../geometry/easing'
 import type { Field, Modulated } from '../../geometry/field'
 import type { FieldDescriptor } from '../descriptors'
-import { previewValues } from '../modulation'
+import { previewValues, type FieldResolution, type PreviewCaveat } from '../modulation'
 import RampPreview from './RampPreview'
 
 type Props = {
@@ -24,8 +24,17 @@ type Props = {
    * one source that genuinely sweeps the layer rather than a single link.
    */
   layerCount: number
-  /** The evaluation hit the instance budget, so the preview may overstate. */
-  truncated?: boolean
+  /**
+   * Where this field is resolved. `count` and `layerCount` cannot answer it:
+   * only the caller knows whether the field belongs to a repeater (resolved
+   * during expansion) or to the shape, colour or stroke (resolved against the
+   * instance context), and a `flatIndex` ramp means different things either
+   * side of that line.
+   */
+  resolution: FieldResolution
+  /** Set where the denominator is a fallback rather than the count the engine
+   * used, so the strip is approximate and must say so. */
+  caveat?: PreviewCaveat
   toColour?: (value: number) => string
   onChange: (value: Field) => void
   /** Ends the coalesce group — fired on pointer release and on blur. */
@@ -39,17 +48,27 @@ const ROW = 'flex items-center gap-2 py-0.5 text-[11px]'
 const KEY = 'w-10 shrink-0 text-neutral-500'
 
 export default function ModulatorEditor({
-  idPrefix, accessibleName, descriptor, field, count, layerCount, truncated, toColour, onChange, onCommit,
+  idPrefix, accessibleName, descriptor, field, count, layerCount, resolution, caveat,
+  toColour, onChange, onCommit,
 }: Props) {
-  // Which denominator the strip normalises against depends on the source, so
-  // it is chosen here rather than picked once at the call site. `index` and
-  // `t` resolve within one link of the chain and sweep that link's copies;
-  // `flatIndex` runs across every instance the layer makes. With a single
-  // repeater those are the same number, which is how one count came to serve
-  // both -- chaining separates them, silently and without any budget
-  // pressure: [radial(12), grid(3x3)] with a fill hue 0 -> 240 ramp makes the
-  // engine restart every 9 copies while a 24-cell strip promised one sweep.
-  const copies = field.source === 'flatIndex' ? layerCount : count
+  // Which denominator the strip normalises against depends on the source and
+  // on where the field resolves, so it is chosen here rather than picked once
+  // at the call site. `index` and `t` resolve within one link of the chain and
+  // sweep that link's copies; `flatIndex` runs across every instance the layer
+  // makes -- but only for a field resolved against the instance context. On a
+  // repeater's own field the engine is still carrying the root context's
+  // flatIndex 0 of total 1, so the ramp never moves off `base` and one cell is
+  // the whole of it. With a single repeater the first two coincide, which is
+  // how one count came to serve both -- chaining separates them, silently and
+  // without any budget pressure: [radial(12), grid(3x3)] with a fill hue
+  // 0 -> 240 ramp makes the engine restart every 9 copies while a 24-cell
+  // strip promised one sweep.
+  const copies =
+    field.source !== 'flatIndex' ? count : resolution === 'instance' ? layerCount : 1
+  // `layerCount` is the emitted total the engine itself normalises flatIndex
+  // against, and the constant above is exact, so only a `count` denominator
+  // can be the fallback the caveat is about.
+  const approximate = field.source === 'flatIndex' ? undefined : caveat
   // A wrapping field can target a full turn in either direction; 400° is a
   // legal hue even though max is 360, because colourToCss wraps at render.
   //
@@ -169,18 +188,22 @@ export default function ModulatorEditor({
         The honest fix is an `intendedCounts` alongside `perLayerCounts`,
         which belongs to a later piece; until then, say so.
 
-        useEvaluation's `truncated` is document-wide rather than per-layer, so
-        this over-warns on an untruncated layer in a truncated document. That
-        is the acceptable side to err on; silence is not. The divergence
-        itself is pinned in modulation.test.ts.
+        The same strip is approximate for a second reason with no budget
+        pressure behind it: where a link's parents each made a different number
+        of copies there is no per-parent count at all, so the denominator falls
+        back to the layer total and the strip draws one even sweep across
+        copies the engine ramped in uneven groups. Both cases borrow the same
+        fallback number, so both get a note; the caller says which.
 
         Its own line, not beside the strip: the note is ~180px at 10px and the
         row has ~279px, so inline it would squeeze the preview back down to a
         sliver -- undoing the C1 fix directly above it.
       */}
-      {truncated && (
-        <div data-testid="ramp-truncated" className="pb-0.5 text-[10px] text-amber-500/80">
-          truncated — preview shows the full ramp
+      {approximate && (
+        <div data-testid="ramp-caveat" className="pb-0.5 text-[10px] text-amber-500/80">
+          {approximate === 'truncated'
+            ? 'truncated — preview shows the full ramp'
+            : 'uneven copies — preview shows one even sweep'}
         </div>
       )}
     </div>
