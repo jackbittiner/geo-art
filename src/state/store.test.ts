@@ -157,4 +157,13 @@ describe('history', () => {
     useStore.getState().undo() // back to the empty document
     expect(useStore.getState().selectedLayerId).toBeNull()
   })
+
+  it('gives each added layer its own undo step', () => {
+    // A null coalesce key, not a constant one: two adds are two gestures.
+    useStore.getState().addAndSelectLayer('halo')
+    useStore.getState().addAndSelectLayer('ring')
+    expect(useStore.getState().history.past).toHaveLength(2)
+    useStore.getState().undo()
+    expect(useStore.getState().doc.layers.map((l) => l.name)).toEqual(['halo'])
+  })
 })
