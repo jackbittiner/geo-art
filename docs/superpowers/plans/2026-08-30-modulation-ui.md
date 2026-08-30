@@ -659,11 +659,19 @@ Run: `npm test -- src/ui/controls/RampPreview.test.tsx` → PASS (6 tests).
 
 - [ ] **Step 5: Mutation-verify (required by spec §10)**
 
-Break the gradient mapper so it ignores the varying channel:
+Break the gradient mapper so it ignores the varying channel. **Both** places
+the mapper is called must be broken — the `style` line paints the cell, but the
+assertions read `data-colour`, so mutating only the style fails nothing:
 
-```ts
+```tsx
+          data-colour={toColour ? toColour(values[0]) : undefined}
+          ...
               ? { background: toColour(values[0]) }
 ```
+
+(This recipe originally named only the `style` line. That was an oversight when
+the assertions were moved to `data-colour` to sidestep jsdom's rewriting of
+`oklch()` — the two changes have to move together.)
 
 Run: `npm test -- src/ui/controls/RampPreview.test.tsx`
 Expected: FAIL on `renders swatches when given a colour mapper` — the second cell's `data-colour` would read `oklch(60% 0.2 0 / 1)` instead of `oklch(60% 0.2 180 / 1)`. Capture the output, restore, re-run to green.
