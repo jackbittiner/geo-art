@@ -8,7 +8,7 @@ export const AUTOSAVE_DEBOUNCE_MS = 300
 /** Restores the last document on mount, then saves changes on a trailing debounce. */
 export function useAutosave(): void {
   const doc = useStore((s) => s.doc)
-  const setDoc = useStore((s) => s.setDoc)
+  const hydrateDoc = useStore((s) => s.hydrateDoc)
   const restored = useRef(false)
   // The document present at mount. Nothing may be written to storage until
   // something has replaced it -- a restore, or a user edit. A run-counting
@@ -28,11 +28,11 @@ export function useAutosave(): void {
     const saved = localStorage.getItem(KEY)
     if (!saved) return
     try {
-      setDoc(deserialize(saved))
+      hydrateDoc(deserialize(saved))
     } catch {
       localStorage.removeItem(KEY)
     }
-  }, [setDoc])
+  }, [hydrateDoc])
 
   // Debounced, because this runs on *every* document change and a slider drag
   // emits one per pointermove: JSON.stringify plus a synchronous localStorage

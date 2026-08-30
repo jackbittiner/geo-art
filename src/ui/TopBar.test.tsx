@@ -3,7 +3,9 @@ import { render, screen, fireEvent, act } from '@testing-library/react'
 import { describe, it, expect, beforeEach } from 'vitest'
 import TopBar from './TopBar'
 import { useStore } from '../state/store'
+import { emptyHistory } from '../state/history'
 import { emptyDocument, defaultLayer } from '../document/defaults'
+import { setCanvasSize } from '../document/ops'
 import { fitViewport } from './viewport'
 
 describe('TopBar', () => {
@@ -15,6 +17,7 @@ describe('TopBar', () => {
       selectedLayerId: null,
       viewport: { pan: { x: 0, y: 0 }, zoom: 1 },
       viewSize: { width: 0, height: 0 },
+      history: emptyHistory(),
     })
   })
 
@@ -125,5 +128,38 @@ describe('TopBar', () => {
     expect(useStore.getState().viewport).toEqual(
       fitViewport(doc.canvas, { width: doc.canvas.width, height: doc.canvas.height }),
     )
+  })
+
+  it('disables undo and redo until there is something to step through', () => {
+    render(<TopBar />)
+    expect(screen.getByRole('button', { name: 'Undo' })).toHaveProperty('disabled', true)
+    expect(screen.getByRole('button', { name: 'Redo' })).toHaveProperty('disabled', true)
+  })
+
+  it('undoes from the button', () => {
+    render(<TopBar />)
+    // Wrapped in act: React 19 batches this store mutation onto a microtask,
+    // so an unwrapped call leaves the button's `disabled` attribute stale
+    // (still true from the initial render) at the moment fireEvent.click
+    // runs, and a disabled button drops the click before it ever reaches
+    // onClick -- the same failure mode a genuinely broken canUndo wiring
+    // would produce, so this had to be pinned down rather than glossed.
+    act(() => {
+      useStore.getState().apply((d) => setCanvasSize(d, 800, 600))
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }))
+    expect(useStore.getState().doc.canvas.width).toBe(1200)
+  })
+
+  it('types a canvas size as one undo step, not one per keystroke', () => {
+    render(<TopBar />)
+    const input = screen.getByLabelText('Canvas width')
+    fireEvent.change(input, { target: { value: '8' } })
+    fireEvent.change(input, { target: { value: '80' } })
+    fireEvent.change(input, { target: { value: '800' } })
+    expect(useStore.getState().doc.canvas.width).toBe(800)
+    expect(useStore.getState().history.past).toHaveLength(1)
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }))
+    expect(useStore.getState().doc.canvas.width).toBe(1200)
   })
 })

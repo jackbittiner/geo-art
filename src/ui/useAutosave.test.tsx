@@ -4,6 +4,7 @@ import { StrictMode } from 'react'
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest'
 import { AUTOSAVE_DEBOUNCE_MS, useAutosave } from './useAutosave'
 import { useStore } from '../state/store'
+import { emptyHistory } from '../state/history'
 import { emptyDocument, defaultLayer } from '../document/defaults'
 import { serialize } from '../document/serialize'
 
@@ -28,7 +29,7 @@ describe('useAutosave', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     localStorage.clear()
-    useStore.setState({ doc: emptyDocument(), selectedLayerId: null })
+    useStore.setState({ doc: emptyDocument(), selectedLayerId: null, history: emptyHistory() })
   })
 
   afterEach(() => {
@@ -234,5 +235,16 @@ describe('useAutosave', () => {
     const writes = spy.mock.calls.filter(([key]) => key === KEY)
     spy.mockRestore()
     expect(writes).toHaveLength(0)
+  })
+
+  it('restoring a saved document does not become an undo step', () => {
+    const saved = emptyDocument()
+    saved.layers.push(defaultLayer('restored'))
+    localStorage.setItem(KEY, serialize(saved))
+
+    render(<StrictMode><Harness /></StrictMode>)
+
+    expect(useStore.getState().doc.layers.map((l) => l.name)).toEqual(['restored'])
+    expect(useStore.getState().history.past).toHaveLength(0)
   })
 })
