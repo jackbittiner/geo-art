@@ -84,10 +84,10 @@ describe('history', () => {
   })
 
   it('records the pre-edit document when an op changes it', () => {
-    useStore.getState().addAndSelectLayer('halo')
     useStore.getState().apply((d) => setCanvasSize(d, 800, 600))
     const { history, doc } = useStore.getState()
     expect(doc.canvas.width).toBe(800)
+    expect(history.past).toHaveLength(1)
     expect(history.past.at(-1)!.doc.canvas.width).toBe(1200)
   })
 
