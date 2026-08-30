@@ -1,6 +1,6 @@
 import { defaultLayer, newId } from './defaults'
 import type { Field } from '../geometry/field'
-import type { Document, Layer, LayerId, ShapeConfig, ShapeType } from './schema'
+import type { Colour, Document, Layer, LayerId, ShapeConfig, ShapeType } from './schema'
 
 const DEFAULT_SHAPES: Record<ShapeType, ShapeConfig> = {
   polygon: { type: 'polygon', sides: 6, radius: 60, rotation: 0 },
@@ -109,5 +109,58 @@ export function setFillChannel(
 ): Document {
   return updateLayer(doc, id, (l) =>
     l.style.fill ? { ...l, style: { ...l.style, fill: { ...l.style.fill, [channel]: value } } } : l,
+  )
+}
+
+/** Sets the layer's fill, or clears it when given undefined. */
+export function setFill(doc: Document, id: LayerId, fill: Colour | undefined): Document {
+  return updateLayer(doc, id, (l) => {
+    if (fill === undefined) {
+      const { fill: _drop, ...style } = l.style
+      return { ...l, style }
+    }
+    return { ...l, style: { ...l.style, fill } }
+  })
+}
+
+/** Sets the layer's stroke, or clears it when given undefined. */
+export function setStroke(
+  doc: Document,
+  id: LayerId,
+  stroke: { colour: Colour; width: Field } | undefined,
+): Document {
+  return updateLayer(doc, id, (l) => {
+    if (stroke === undefined) {
+      const { stroke: _drop, ...style } = l.style
+      return { ...l, style }
+    }
+    return { ...l, style: { ...l.style, stroke } }
+  })
+}
+
+/** Edits one channel of the stroke's colour. No-op when the layer has no stroke. */
+export function setStrokeChannel(
+  doc: Document,
+  id: LayerId,
+  channel: 'l' | 'c' | 'h' | 'a',
+  value: Field,
+): Document {
+  return updateLayer(doc, id, (l) =>
+    l.style.stroke
+      ? {
+          ...l,
+          style: {
+            ...l.style,
+            stroke: { ...l.style.stroke, colour: { ...l.style.stroke.colour, [channel]: value } },
+          },
+        }
+      : l,
+  )
+}
+
+/** Edits the stroke's width. No-op when the layer has no stroke. */
+export function setStrokeWidth(doc: Document, id: LayerId, value: Field): Document {
+  return updateLayer(doc, id, (l) =>
+    l.style.stroke ? { ...l, style: { ...l.style, stroke: { ...l.style.stroke, width: value } } } : l,
   )
 }
