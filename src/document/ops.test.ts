@@ -244,10 +244,16 @@ describe('fill and stroke ops', () => {
   const seeded = () => addLayer(emptyDocument(), 'halo')
   const someFill = { l: 0.5, c: 0.1, h: 10, a: 1 }
 
-  it('sets the fill', () => {
-    const doc = seeded()
-    const out = setFill(doc, doc.layers[0].id, someFill)
+  it('sets the fill, leaving an existing stroke untouched', () => {
+    // Fixture starts with a stroke so there is something for setFill to leak
+    // into -- a fixture with no stroke can't fail against a `{ fill }`
+    // implementation that clobbers the rest of style.
+    const base = seeded()
+    const id = base.layers[0].id
+    const withStroke = setStroke(base, id, DEFAULT_STROKE)
+    const out = setFill(withStroke, id, someFill)
     expect(out.layers[0].style.fill).toEqual(someFill)
+    expect(out.layers[0].style.stroke).toEqual(DEFAULT_STROKE)
   })
 
   it('clears the fill by deleting the key, not by setting it to undefined', () => {
@@ -265,10 +271,38 @@ describe('fill and stroke ops', () => {
     expect(setFill(doc, 'nope', someFill)).toBe(doc)
   })
 
-  it('sets the stroke', () => {
+  it('sets the stroke, leaving the existing fill untouched', () => {
+    // seeded()'s layer already has a fill (defaultLayer's default) -- a
+    // fixture with no fill can't fail against a `{ stroke }` implementation
+    // that clobbers the rest of style.
     const doc = seeded()
+    const existingFill = doc.layers[0].style.fill
     const out = setStroke(doc, doc.layers[0].id, DEFAULT_STROKE)
     expect(out.layers[0].style.stroke).toEqual(DEFAULT_STROKE)
+    expect(out.layers[0].style.fill).toEqual(existingFill)
+  })
+
+  it('does not store the caller\'s fill or stroke object by reference', () => {
+    // setShapeType's precedent: structuredClone(DEFAULT_SHAPES[type]) exists
+    // precisely so two layers built from one module-level default don't share
+    // a nested object. DEFAULT_STROKE and DEFAULT_FILL are exactly such
+    // constants, and Brief 2 calls setStroke(doc, id, stash ?? DEFAULT_STROKE)
+    // directly -- so two layers enabled from scratch must not end up aliasing
+    // one colour object. Mutate the layer's stored colour afterwards and
+    // confirm the shared source constant is untouched.
+    const base = seeded()
+    const id = base.layers[0].id
+
+    const fillSource = { l: 0.5, c: 0.1, h: 10, a: 1 }
+    const withFill = setFill(base, id, fillSource)
+    withFill.layers[0].style.fill!.h = 999
+    expect(fillSource.h).toBe(10)
+
+    const strokeSnapshot = JSON.stringify(DEFAULT_STROKE)
+    const withStroke = setStroke(base, id, DEFAULT_STROKE)
+    withStroke.layers[0].style.stroke!.colour.h = 999
+    withStroke.layers[0].style.stroke!.width = 999
+    expect(JSON.stringify(DEFAULT_STROKE)).toBe(strokeSnapshot)
   })
 
   it('clears the stroke by deleting the key, not by setting it to undefined', () => {
