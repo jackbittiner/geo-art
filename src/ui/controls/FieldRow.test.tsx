@@ -19,7 +19,9 @@ function setup(value: Field, descriptor = hue, scope = 'fill') {
 describe('FieldRow', () => {
   it('offers the toggle on a field that varies per copy', () => {
     setup(280)
-    expect(screen.getByRole('button', { name: 'fill hue modulate' })).toBeDefined()
+    const toggle = screen.getByRole('button', { name: 'fill hue modulate' })
+    expect(toggle).toBeDefined()
+    expect(toggle.getAttribute('aria-pressed')).toBe('false')
   })
 
   it('offers no toggle on a field that cannot vary', () => {
@@ -60,6 +62,14 @@ describe('FieldRow', () => {
   it('shows the editor when modulated', () => {
     setup({ base: 280, to: 400, source: 'index', curve: 'linear' })
     expect(screen.getByLabelText('fill hue to')).toBeDefined()
+  })
+
+  it('preserves a fractional base through the toggle round trip', () => {
+    const { onChange } = setup(280.5)
+    fireEvent.click(screen.getByRole('button', { name: 'fill hue modulate' }))
+    expect(onChange).toHaveBeenCalledWith({
+      base: 280.5, to: 400.5, source: 'index', curve: 'linear',
+    })
   })
 
   it('generates ids without spaces', () => {
