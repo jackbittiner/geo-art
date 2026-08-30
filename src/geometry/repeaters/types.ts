@@ -31,6 +31,18 @@ export type RadialConfig = {
   spin: Field
 }
 
-/** Grows in Phase 2 with grid, path, recursive, mirror, symmetry, kaleido. */
-export type RepeaterConfig = RadialConfig
+export type GridConfig = {
+  type: 'grid'
+  rows: Field
+  cols: Field
+  /** px between column centres. */
+  spacingX: Field
+  /** px between row centres. */
+  spacingY: Field
+  /** Degrees. Rotation of each copy about its own centre. */
+  spin: Field
+}
+
+/** Grows in Phase 2 with path, recursive, mirror, symmetry, kaleido. */
+export type RepeaterConfig = RadialConfig | GridConfig
 export type RepeaterType = RepeaterConfig['type']
