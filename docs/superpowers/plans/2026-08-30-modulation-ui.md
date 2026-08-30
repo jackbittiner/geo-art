@@ -504,7 +504,23 @@ Break the sampling so cells are renumbered rather than resolved at their true in
 ```
 
 Run: `npm test -- src/ui/modulation.test.ts`
-Expected: FAIL on the cycles test and on the anti-drift test. Capture the output, restore, re-run to green.
+
+**Corrected during execution — the original prediction here was wrong.** This
+mutation does *not* fail the cycles test or the count-12 anti-drift test, and
+cannot:
+
+- With `count <= PREVIEW_CELLS`, `cells === total`, so `i === k` and
+  `total === cells` already. The renumbering is a byte-for-byte no-op, which
+  makes the 12-copy anti-drift test structurally incapable of observing it.
+- At 240 copies the two index sequences do differ, but the cycles test counts
+  *downward wraps*, and that metric is invariant under this mutation — both
+  sequences wrap twice.
+
+The mutation is only observable where sampling actually happens and the
+comparison is against real values rather than a derived metric. The test that
+catches it drives 200 copies through `evaluate()` and compares the full
+24-element array against `previewValues`. Expect that test to FAIL. Capture the
+output, restore, re-run to green.
 
 - [ ] **Step 6: Commit**
 
