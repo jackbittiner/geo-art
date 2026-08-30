@@ -21,6 +21,8 @@ type Props = {
   truncated?: boolean
   toColour?: (value: number) => string
   onChange: (value: Field) => void
+  /** Ends the coalesce group — fired on pointer release and on blur. */
+  onCommit?: () => void
 }
 
 /** HTML forbids spaces in an id; "repeat 1" has to become "repeat-1". */
@@ -28,7 +30,7 @@ const slugify = (scope: string) =>
   scope.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
 
 export default function FieldRow({
-  scope, descriptor, value, count, truncated, toColour, onChange,
+  scope, descriptor, value, count, truncated, toColour, onChange, onCommit,
 }: Props) {
   const idPrefix = `field-${slugify(scope)}-${descriptor.key}`
   const accessibleName = `${scope} ${descriptor.label}`
@@ -57,6 +59,8 @@ export default function FieldRow({
             const next = Number(e.target.value)
             onChange(modulated ? { ...value, base: next } : next)
           }}
+          onPointerUp={onCommit}
+          onBlur={onCommit}
         />
         <span className="w-12 shrink-0 text-right tabular-nums text-neutral-300">
           {Number(base.toFixed(3))}
@@ -73,7 +77,17 @@ export default function FieldRow({
                 ? 'border-sky-500 bg-sky-500/20 text-sky-300'
                 : 'border-neutral-700 text-neutral-500 hover:bg-neutral-800'
             }`}
-            onClick={() => onChange(modulated ? value.base : toModulated(descriptor, base))}
+            // A discrete click, not a drag: it must not join -- or open -- the
+            // coalesce group keyed to this row's slider. Without the commit,
+            // toggling a ramp on and then dragging `to` within the idle window
+            // banked one entry for both, so a single undo threw away the ramp
+            // *and* the toggle; toggling on and straight back off banked an
+            // entry identical to the current document, and undo did nothing
+            // visible at all.
+            onClick={() => {
+              onChange(modulated ? value.base : toModulated(descriptor, base))
+              onCommit?.()
+            }}
           >
             ~
           </button>
@@ -90,6 +104,7 @@ export default function FieldRow({
           truncated={truncated}
           toColour={toColour}
           onChange={onChange}
+          onCommit={onCommit}
         />
       )}
     </div>

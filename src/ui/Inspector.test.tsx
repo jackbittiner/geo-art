@@ -4,11 +4,13 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import Inspector from './Inspector'
 import { useStore } from '../state/store'
 import { emptyDocument, defaultLayer, DEFAULT_FILL, DEFAULT_STROKE } from '../document/defaults'
+import { emptyHistory } from '../state/history'
+import { isModulated, type Modulated } from '../geometry/field'
 
 function seed() {
   const doc = emptyDocument()
   doc.layers.push(defaultLayer('halo'))
-  useStore.setState({ doc, selectedLayerId: doc.layers[0].id })
+  useStore.setState({ doc, selectedLayerId: doc.layers[0].id, history: emptyHistory() })
   return doc
 }
 
@@ -541,5 +543,61 @@ describe('Inspector', () => {
     expect(screen.queryByRole('button', { name: 'repeat 1 radius modulate' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'repeat 1 start modulate' })).toBeNull()
     expect(screen.getByRole('button', { name: 'repeat 1 spin modulate' })).toBeDefined()
+  })
+
+  it('gives each row a coalesce key so one drag is one undo step', () => {
+    render(<Inspector />)
+    const slider = screen.getByLabelText('shape radius')
+    fireEvent.change(slider, { target: { value: '100' } })
+    fireEvent.change(slider, { target: { value: '200' } })
+    expect(useStore.getState().history.past).toHaveLength(1)
+    useStore.getState().undo()
+    expect((useStore.getState().doc.layers[0].shape as { radius: number }).radius).toBe(60)
+  })
+
+  it('ends the group when a slider is released', () => {
+    render(<Inspector />)
+    const slider = screen.getByLabelText('shape radius')
+    fireEvent.change(slider, { target: { value: '100' } })
+    fireEvent.pointerUp(slider)
+    fireEvent.change(slider, { target: { value: '200' } })
+    expect(useStore.getState().history.past).toHaveLength(2)
+  })
+
+  // The `~` toggle is a discrete click routed through the same onChange the
+  // row binds with a per-row coalesce key, and it fires no pointer event of
+  // its own. Without an explicit commit it opened a group the next drag of
+  // the ramp it just revealed joined, so a single undo threw away both the
+  // ramp *and* the toggle -- the toggle being precisely the thing spec §1
+  // names undo as existing to make safe.
+  it('does not let the modulate toggle share a group with the ramp it reveals', () => {
+    render(<Inspector />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'fill hue modulate' }))
+    expect(useStore.getState().history.past).toHaveLength(1)
+
+    fireEvent.change(screen.getByLabelText('fill hue to'), { target: { value: '200' } })
+    expect(useStore.getState().history.past).toHaveLength(2)
+
+    // And the two steps come back separately: one undo returns the ramp
+    // target the toggle chose, leaving the field still modulated.
+    useStore.getState().undo()
+    const hue = useStore.getState().doc.layers[0].style.fill!.h
+    expect(isModulated(hue)).toBe(true)
+    expect((hue as Modulated).to).toBe(400)
+  })
+
+  // Same shape, from the other side: `constant` replaces the ramp with its
+  // base and fires no pointer event either, so a slider dragged straight
+  // afterwards used to join the group the button opened.
+  it('does not let `constant` share a group with the slider that follows it', () => {
+    render(<Inspector />)
+    fireEvent.click(screen.getByRole('button', { name: 'fill hue modulate' }))
+
+    fireEvent.click(screen.getByRole('button', { name: 'fill hue make constant' }))
+    expect(useStore.getState().history.past).toHaveLength(2)
+
+    fireEvent.change(screen.getByLabelText('fill hue'), { target: { value: '200' } })
+    expect(useStore.getState().history.past).toHaveLength(3)
   })
 })

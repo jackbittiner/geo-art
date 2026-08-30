@@ -78,4 +78,55 @@ describe('FieldRow', () => {
     expect(slider.id).toBe('field-repeat-1-spin')
     expect(slider.id).not.toContain(' ')
   })
+
+  it('commits the gesture when the pointer is released', () => {
+    const onCommit = vi.fn()
+    render(
+      <FieldRow scope="fill" descriptor={hue} value={280} count={12} onChange={vi.fn()} onCommit={onCommit} />,
+    )
+    fireEvent.pointerUp(screen.getByLabelText('fill hue'))
+    expect(onCommit).toHaveBeenCalledTimes(1)
+  })
+
+  // The `~` toggle is a discrete click, not a drag, and it fires no pointer
+  // event -- so without an explicit commit it opened a coalesce group under
+  // the row's key that the very ramp it reveals then joined.
+  it('commits the modulate toggle, so it opens no lingering group', () => {
+    const onCommit = vi.fn()
+    render(
+      <FieldRow scope="fill" descriptor={hue} value={280} count={12} onChange={vi.fn()} onCommit={onCommit} />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'fill hue modulate' }))
+    expect(onCommit).toHaveBeenCalledTimes(1)
+  })
+
+  // The passthrough to ModulatorEditor: deleting `onCommit={onCommit}` from
+  // the editor below used to leave every test green, so a ramp drag banked no
+  // group end at all and the next unrelated edit joined it.
+  it('passes the commit through to the modulator editor', () => {
+    const onCommit = vi.fn()
+    render(
+      <FieldRow
+        scope="fill"
+        descriptor={hue}
+        value={{ base: 280, to: 400, source: 'index', curve: 'linear' }}
+        count={12}
+        onChange={vi.fn()}
+        onCommit={onCommit}
+      />,
+    )
+    fireEvent.pointerUp(screen.getByLabelText('fill hue to'))
+    expect(onCommit).toHaveBeenCalledTimes(1)
+  })
+
+  it('commits the gesture on blur, for keyboard-driven changes', () => {
+    // Arrow keys fire no pointer events, so release alone would merge an
+    // afternoon of nudges into one undo entry.
+    const onCommit = vi.fn()
+    render(
+      <FieldRow scope="fill" descriptor={hue} value={280} count={12} onChange={vi.fn()} onCommit={onCommit} />,
+    )
+    fireEvent.blur(screen.getByLabelText('fill hue'))
+    expect(onCommit).toHaveBeenCalledTimes(1)
+  })
 })

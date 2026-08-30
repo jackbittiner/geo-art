@@ -4,8 +4,10 @@ import { StrictMode } from 'react'
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest'
 import { AUTOSAVE_DEBOUNCE_MS, useAutosave } from './useAutosave'
 import { useStore } from '../state/store'
+import { emptyHistory } from '../state/history'
 import { emptyDocument, defaultLayer } from '../document/defaults'
 import { serialize } from '../document/serialize'
+import { setCanvasSize } from '../document/ops'
 
 const KEY = 'geo-art:autosave'
 
@@ -28,7 +30,7 @@ describe('useAutosave', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     localStorage.clear()
-    useStore.setState({ doc: emptyDocument(), selectedLayerId: null })
+    useStore.setState({ doc: emptyDocument(), selectedLayerId: null, history: emptyHistory() })
   })
 
   afterEach(() => {
@@ -234,5 +236,46 @@ describe('useAutosave', () => {
     const writes = spy.mock.calls.filter(([key]) => key === KEY)
     spy.mockRestore()
     expect(writes).toHaveLength(0)
+  })
+
+  // `apply` banks `state.doc` by reference, so the store's initial document is
+  // the object sitting in history.past[0] and an undo restores that very
+  // object -- meaning the document present at mount can come back as the
+  // *current* document. An identity check against it then declined to save,
+  // and storage kept the state the user had just undone: a first-time user
+  // who undoes back to nothing and reloads gets the discarded work back.
+  // StrictMode because that's how the app mounts, and because the guard this
+  // pins is the same one StrictMode's double-invoke defeated once already.
+  it('saves an undo that lands back on the document present at mount, under StrictMode', () => {
+    render(
+      <StrictMode>
+        <Harness />
+      </StrictMode>,
+    )
+
+    act(() => {
+      useStore.getState().apply((d) => setCanvasSize(d, 800, 600))
+    })
+    flushDebounce()
+    expect(JSON.parse(localStorage.getItem(KEY)!).canvas.width).toBe(800)
+
+    act(() => {
+      useStore.getState().undo()
+    })
+    flushDebounce()
+
+    expect(useStore.getState().doc.canvas.width).toBe(1200)
+    expect(JSON.parse(localStorage.getItem(KEY)!).canvas.width).toBe(1200)
+  })
+
+  it('restoring a saved document does not become an undo step', () => {
+    const saved = emptyDocument()
+    saved.layers.push(defaultLayer('restored'))
+    localStorage.setItem(KEY, serialize(saved))
+
+    render(<StrictMode><Harness /></StrictMode>)
+
+    expect(useStore.getState().doc.layers.map((l) => l.name)).toEqual(['restored'])
+    expect(useStore.getState().history.past).toHaveLength(0)
   })
 })

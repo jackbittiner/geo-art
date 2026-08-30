@@ -8,19 +8,30 @@ export const AUTOSAVE_DEBOUNCE_MS = 300
 /** Restores the last document on mount, then saves changes on a trailing debounce. */
 export function useAutosave(): void {
   const doc = useStore((s) => s.doc)
-  const setDoc = useStore((s) => s.setDoc)
+  const hydrateDoc = useStore((s) => s.hydrateDoc)
   const restored = useRef(false)
-  // The document present at mount. Nothing may be written to storage until
-  // something has replaced it -- a restore, or a user edit. A run-counting
-  // guard ("skip the first invocation") cannot express this safely: under
-  // <StrictMode> (see src/main.tsx), React invokes every effect twice on
-  // mount before the first invocation's state update commits, so the first
-  // synthetic invocation consumes a one-shot guard and the second runs for
-  // real while `doc` is still the pre-restore default -- the exact clobber
-  // this guard exists to prevent. An identity check against the mount-time
-  // document is immune to that, because it doesn't depend on how many times
-  // the effect fires, only on whether the document has actually changed.
+  // The document present at mount, and whether anything has yet replaced it.
+  // Nothing may be written to storage until something has -- a restore, or a
+  // user edit.
+  //
+  // A run-counting guard ("skip the first invocation") cannot express this
+  // safely: under <StrictMode> (see src/main.tsx), React invokes every effect
+  // twice on mount before the first invocation's state update commits, so the
+  // first synthetic invocation consumes a one-shot guard and the second runs
+  // for real while `doc` is still the pre-restore default -- the exact clobber
+  // this guard exists to prevent. Comparing against the mount-time document is
+  // immune to that, because it doesn't depend on how many times the effect
+  // fires, only on whether the document has actually changed.
+  //
+  // The latch is what makes that comparison a one-way gate rather than a
+  // standing test. `apply` banks `state.doc` by reference, so the store's
+  // initial document sits in `history.past[0]` and an undo restores that very
+  // object: a bare `doc === mountDoc` check would then decline to save, and
+  // storage would keep the state the user just undid. Once dirty, always
+  // dirty. On mount `doc` is still `mountDoc`, so no invocation -- synthetic
+  // or real -- can latch before something genuinely replaces the document.
   const mountDoc = useRef(doc)
+  const dirty = useRef(false)
 
   useEffect(() => {
     if (restored.current) return
@@ -28,11 +39,11 @@ export function useAutosave(): void {
     const saved = localStorage.getItem(KEY)
     if (!saved) return
     try {
-      setDoc(deserialize(saved))
+      hydrateDoc(deserialize(saved))
     } catch {
       localStorage.removeItem(KEY)
     }
-  }, [setDoc])
+  }, [hydrateDoc])
 
   // Debounced, because this runs on *every* document change and a slider drag
   // emits one per pointermove: JSON.stringify plus a synchronous localStorage
@@ -41,7 +52,8 @@ export function useAutosave(): void {
   // worth persisting -- but a burst cut short by the tab closing would lose the
   // pending write, so `beforeunload` flushes it.
   useEffect(() => {
-    if (doc === mountDoc.current) return
+    if (!dirty.current && doc === mountDoc.current) return
+    dirty.current = true
 
     let pending = true
     const write = () => {

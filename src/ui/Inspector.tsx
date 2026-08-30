@@ -25,8 +25,9 @@ const TOGGLE_OFF = 'border-neutral-700 text-neutral-500 hover:bg-neutral-800'
 
 /** The fill/stroke last seen for a layer, kept so switching a card off and
  * back on restores what the user had rather than a default. Session-scoped
- * component state, keyed by layer id -- there is no undo in this project yet,
- * so a mis-clicked toggle would otherwise destroy tuned work irrecoverably. */
+ * component state, keyed by layer id -- undo steps back through every edit
+ * made since the toggle, while this stash restores the tuned colour directly,
+ * regardless of what has happened to the document since. */
 type Stash = { fill?: Colour; stroke?: { colour: Colour; width: Field } }
 
 /**
@@ -71,6 +72,7 @@ export default function Inspector() {
   const doc = useStore((s) => s.doc)
   const selectedLayerId = useStore((s) => s.selectedLayerId)
   const apply = useStore((s) => s.apply)
+  const endCoalesce = useStore((s) => s.endCoalesce)
   const result = useEvaluation()
   const [stashes, setStashes] = useState<Record<LayerId, Stash>>({})
 
@@ -151,7 +153,8 @@ export default function Inspector() {
             value={shapeRecord[descriptor.key]}
             count={count}
             truncated={truncated}
-            onChange={(v) => apply((d) => setShapeField(d, layer.id, descriptor.key, v))}
+            onChange={(v) => apply((d) => setShapeField(d, layer.id, descriptor.key, v), `shape-${descriptor.key}`)}
+            onCommit={endCoalesce}
           />
         ))}
       </div>
@@ -175,7 +178,13 @@ export default function Inspector() {
                 value={record[descriptor.key]}
                 count={count}
                 truncated={truncated}
-                onChange={(v) => apply((d) => setRepeaterField(d, layer.id, index, descriptor.key, v))}
+                onChange={(v) =>
+                  apply(
+                    (d) => setRepeaterField(d, layer.id, index, descriptor.key, v),
+                    `repeat-${index}-${descriptor.key}`,
+                  )
+                }
+                onCommit={endCoalesce}
               />
             ))}
           </div>
@@ -200,8 +209,12 @@ export default function Inspector() {
               truncated={truncated}
               toColour={swatchFor(layer.style.fill!)(descriptor.key as 'l' | 'c' | 'h' | 'a')}
               onChange={(v) =>
-                apply((d) => setFillChannel(d, layer.id, descriptor.key as 'l' | 'c' | 'h' | 'a', v))
+                apply(
+                  (d) => setFillChannel(d, layer.id, descriptor.key as 'l' | 'c' | 'h' | 'a', v),
+                  `fill-${descriptor.key}`,
+                )
               }
+              onCommit={endCoalesce}
             />
           ))}
       </StyleCard>
@@ -225,8 +238,12 @@ export default function Inspector() {
                 truncated={truncated}
                 toColour={swatchFor(layer.style.stroke!.colour)(descriptor.key as 'l' | 'c' | 'h' | 'a')}
                 onChange={(v) =>
-                  apply((d) => setStrokeChannel(d, layer.id, descriptor.key as 'l' | 'c' | 'h' | 'a', v))
+                  apply(
+                    (d) => setStrokeChannel(d, layer.id, descriptor.key as 'l' | 'c' | 'h' | 'a', v),
+                    `stroke-${descriptor.key}`,
+                  )
                 }
+                onCommit={endCoalesce}
               />
             ))}
             {STROKE_FIELDS.map((descriptor) => (
@@ -237,7 +254,8 @@ export default function Inspector() {
                 value={layer.style.stroke!.width}
                 count={count}
                 truncated={truncated}
-                onChange={(v) => apply((d) => setStrokeWidth(d, layer.id, v))}
+                onChange={(v) => apply((d) => setStrokeWidth(d, layer.id, v), 'stroke-width')}
+                onCommit={endCoalesce}
               />
             ))}
           </>

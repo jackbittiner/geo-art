@@ -3,6 +3,7 @@ import { emptyDocument } from '../document/defaults'
 import { addLayer } from '../document/ops'
 import type { Document, LayerId } from '../document/schema'
 import { DEFAULT_VIEWPORT, type Viewport } from '../render/renderer'
+import { closeGroup, emptyHistory, record, redo as redoHistory, undo as undoHistory, type History } from './history'
 
 /** CSS pixels of the canvas pane, published by CanvasView. */
 export type ViewSize = { width: number; height: number }
@@ -18,13 +19,20 @@ type State = {
    */
   viewSize: ViewSize
   isDragging: boolean
+  history: History
 
-  apply: (fn: (doc: Document) => Document) => void
+  apply: (fn: (doc: Document) => Document, coalesceKey?: string) => void
   setDoc: (doc: Document) => void
+  /** Replaces the document without recording — the autosave restore on mount. */
+  hydrateDoc: (doc: Document) => void
   select: (id: LayerId | null) => void
   setViewport: (viewport: Viewport) => void
   setViewSize: (viewSize: ViewSize) => void
   setDragging: (isDragging: boolean) => void
+  undo: () => void
+  redo: () => void
+  /** Ends the current coalesce group, on pointer release or blur. */
+  endCoalesce: () => void
   addAndSelectLayer: (name?: string) => void
 }
 
@@ -39,14 +47,30 @@ export const useStore = create<State>((set) => ({
   viewport: DEFAULT_VIEWPORT,
   viewSize: { width: 0, height: 0 },
   isDragging: false,
+  history: emptyHistory(),
 
-  apply: (fn) =>
+  apply: (fn, coalesceKey) =>
     set((state) => {
       const doc = fn(state.doc)
-      return { doc, selectedLayerId: reconcileSelection(doc, state.selectedLayerId) }
+      // ops return the input by reference when nothing matched; nothing
+      // happened, so nothing should become undoable.
+      if (doc === state.doc) return state
+      return {
+        doc,
+        history: record(state.history, state.doc, coalesceKey ?? null, Date.now()),
+        selectedLayerId: reconcileSelection(doc, state.selectedLayerId),
+      }
     }),
 
-  setDoc: (doc) => set((state) => ({ doc, selectedLayerId: reconcileSelection(doc, state.selectedLayerId) })),
+  setDoc: (doc) =>
+    set((state) => ({
+      doc,
+      history: record(state.history, state.doc, null, Date.now()),
+      selectedLayerId: reconcileSelection(doc, state.selectedLayerId),
+    })),
+
+  hydrateDoc: (doc) =>
+    set((state) => ({ doc, selectedLayerId: reconcileSelection(doc, state.selectedLayerId) })),
 
   select: (selectedLayerId) => set({ selectedLayerId }),
   setViewport: (viewport) => set({ viewport }),
@@ -62,9 +86,37 @@ export const useStore = create<State>((set) => ({
     ),
   setDragging: (isDragging) => set({ isDragging }),
 
+  undo: () =>
+    set((state) => {
+      const stepped = undoHistory(state.history, state.doc)
+      if (stepped === null) return state
+      return {
+        doc: stepped.doc,
+        history: stepped.history,
+        selectedLayerId: reconcileSelection(stepped.doc, state.selectedLayerId),
+      }
+    }),
+
+  redo: () =>
+    set((state) => {
+      const stepped = redoHistory(state.history, state.doc)
+      if (stepped === null) return state
+      return {
+        doc: stepped.doc,
+        history: stepped.history,
+        selectedLayerId: reconcileSelection(stepped.doc, state.selectedLayerId),
+      }
+    }),
+
+  endCoalesce: () => set((state) => ({ history: closeGroup(state.history) })),
+
   addAndSelectLayer: (name = 'layer') =>
     set((state) => {
       const doc = addLayer(state.doc, name)
-      return { doc, selectedLayerId: doc.layers.at(-1)!.id }
+      return {
+        doc,
+        history: record(state.history, state.doc, null, Date.now()),
+        selectedLayerId: doc.layers.at(-1)!.id,
+      }
     }),
 }))

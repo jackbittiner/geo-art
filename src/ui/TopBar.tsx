@@ -38,10 +38,21 @@ export default function TopBar() {
   const setDoc = useStore((s) => s.setDoc)
   const viewSize = useStore((s) => s.viewSize)
   const setViewport = useStore((s) => s.setViewport)
+  const undo = useStore((s) => s.undo)
+  const redo = useStore((s) => s.redo)
+  const canUndo = useStore((s) => s.history.past.length > 0)
+  const canRedo = useStore((s) => s.history.future.length > 0)
+  const endCoalesce = useStore((s) => s.endCoalesce)
   const result = useEvaluation()
 
-  const width = useSizeField(doc.canvas.width, (w) => apply((d) => setCanvasSize(d, w, d.canvas.height)))
-  const height = useSizeField(doc.canvas.height, (h) => apply((d) => setCanvasSize(d, d.canvas.width, h)))
+  // Every keystroke that parses commits (see useSizeField above), so without a
+  // coalesce key typing "800" would record three undo entries -- one per digit.
+  const width = useSizeField(doc.canvas.width, (w) =>
+    apply((d) => setCanvasSize(d, w, d.canvas.height), 'canvas-width'),
+  )
+  const height = useSizeField(doc.canvas.height, (h) =>
+    apply((d) => setCanvasSize(d, d.canvas.width, h), 'canvas-height'),
+  )
 
   return (
     <header className="flex items-center gap-4 border-b border-neutral-800 px-3 py-2 text-xs">
@@ -55,6 +66,7 @@ export default function TopBar() {
           className="w-16 rounded border border-neutral-700 bg-neutral-950 px-1 py-0.5 text-right text-neutral-100"
           value={width.text}
           onChange={width.onChange}
+          onBlur={endCoalesce}
         />
         <span>×</span>
         <input
@@ -63,6 +75,7 @@ export default function TopBar() {
           className="w-16 rounded border border-neutral-700 bg-neutral-950 px-1 py-0.5 text-right text-neutral-100"
           value={height.text}
           onChange={height.onChange}
+          onBlur={endCoalesce}
         />
       </label>
 
@@ -89,6 +102,23 @@ export default function TopBar() {
         }
       >
         Fit
+      </button>
+
+      <button
+        className="rounded border border-neutral-700 px-2 py-0.5 hover:bg-neutral-800 disabled:opacity-40 disabled:hover:bg-transparent"
+        onClick={undo}
+        disabled={!canUndo}
+        title="Undo (⌘Z)"
+      >
+        Undo
+      </button>
+      <button
+        className="rounded border border-neutral-700 px-2 py-0.5 hover:bg-neutral-800 disabled:opacity-40 disabled:hover:bg-transparent"
+        onClick={redo}
+        disabled={!canRedo}
+        title="Redo (⇧⌘Z)"
+      >
+        Redo
       </button>
 
       <button

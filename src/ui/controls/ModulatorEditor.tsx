@@ -17,6 +17,8 @@ type Props = {
   truncated?: boolean
   toColour?: (value: number) => string
   onChange: (value: Field) => void
+  /** Ends the coalesce group — fired on pointer release and on blur. */
+  onCommit?: () => void
 }
 
 const ROW = 'flex items-center gap-2 py-0.5 text-[11px]'
@@ -26,7 +28,7 @@ const ROW = 'flex items-center gap-2 py-0.5 text-[11px]'
 const KEY = 'w-10 shrink-0 text-neutral-500'
 
 export default function ModulatorEditor({
-  idPrefix, accessibleName, descriptor, field, count, truncated, toColour, onChange,
+  idPrefix, accessibleName, descriptor, field, count, truncated, toColour, onChange, onCommit,
 }: Props) {
   // A wrapping field can target a full turn in either direction; 400° is a
   // legal hue even though max is 360, because colourToCss wraps at render.
@@ -60,6 +62,8 @@ export default function ModulatorEditor({
           step={descriptor.step ?? 'any'}
           value={field.to}
           onChange={(e) => onChange({ ...field, to: Number(e.target.value) })}
+          onPointerUp={onCommit}
+          onBlur={onCommit}
         />
         <span className="w-12 shrink-0 text-right tabular-nums text-neutral-300">
           {Number(field.to.toFixed(3))}
@@ -98,6 +102,8 @@ export default function ModulatorEditor({
           step={1}
           value={field.cycles ?? 1}
           onChange={(e) => setCycles(Number(e.target.value))}
+          onPointerUp={onCommit}
+          onBlur={onCommit}
         />
         <span className="w-4 shrink-0 text-right tabular-nums text-neutral-300">
           {field.cycles ?? 1}
@@ -123,7 +129,12 @@ export default function ModulatorEditor({
           aria-label={`${accessibleName} make constant`}
           title="Replace the ramp with its base value"
           className="shrink-0 rounded border border-neutral-700 px-1 py-0.5 text-[10px] text-neutral-400 hover:bg-neutral-800"
-          onClick={() => onChange(field.base)}
+          // Discrete, like FieldRow's `~` toggle: commit so this cannot share
+          // a coalesce group with the sliders around it.
+          onClick={() => {
+            onChange(field.base)
+            onCommit?.()
+          }}
         >
           constant
         </button>

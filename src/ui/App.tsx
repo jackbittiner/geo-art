@@ -5,10 +5,12 @@ import Inspector from './Inspector'
 import LayerList from './LayerList'
 import TopBar from './TopBar'
 import { useAutosave } from './useAutosave'
+import { useKeyboard } from './useKeyboard'
 import { useStore } from '../state/store'
 
 export default function App() {
   useAutosave()
+  useKeyboard()
   const doc = useStore((s) => s.doc)
   const layerCount = doc.layers.length
   return (

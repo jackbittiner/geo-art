@@ -18,6 +18,7 @@ type EditorProps = Parameters<typeof ModulatorEditor>[0]
 
 function setup(over: Partial<EditorProps> = {}) {
   const onChange = vi.fn()
+  const onCommit = vi.fn()
   render(
     <ModulatorEditor
       idPrefix="field-fill-h"
@@ -26,10 +27,11 @@ function setup(over: Partial<EditorProps> = {}) {
       field={field()}
       count={12}
       onChange={onChange}
+      onCommit={onCommit}
       {...over}
     />,
   )
-  return { onChange }
+  return { onChange, onCommit }
 }
 
 describe('ModulatorEditor', () => {
@@ -78,6 +80,36 @@ describe('ModulatorEditor', () => {
     const { onChange } = setup()
     fireEvent.click(screen.getByRole('button', { name: 'fill hue make constant' }))
     expect(onChange).toHaveBeenCalledWith(280)
+  })
+
+  // The editor's own commit wiring, asserted directly: deleting every
+  // onPointerUp and onBlur in this component used to leave the whole suite
+  // green, because the only thing exercising them was the row above.
+  it('commits the `to` gesture when the pointer is released', () => {
+    const { onCommit } = setup()
+    fireEvent.pointerUp(screen.getByLabelText('fill hue to'))
+    expect(onCommit).toHaveBeenCalledTimes(1)
+  })
+
+  it('commits the `to` gesture on blur, for keyboard-driven changes', () => {
+    const { onCommit } = setup()
+    fireEvent.blur(screen.getByLabelText('fill hue to'))
+    expect(onCommit).toHaveBeenCalledTimes(1)
+  })
+
+  it('commits the cycles gesture when the pointer is released', () => {
+    const { onCommit } = setup()
+    fireEvent.pointerUp(screen.getByLabelText('fill hue cycles'))
+    expect(onCommit).toHaveBeenCalledTimes(1)
+  })
+
+  // `constant` is a discrete click that fires no pointer event of its own, so
+  // without an explicit commit it left the coalesce group its own onChange
+  // opened standing, for the next slider drag to join.
+  it('commits when the field is made constant', () => {
+    const { onCommit } = setup()
+    fireEvent.click(screen.getByRole('button', { name: 'fill hue make constant' }))
+    expect(onCommit).toHaveBeenCalledTimes(1)
   })
 
   it('lets a wrapping field target a full turn either side of base', () => {
