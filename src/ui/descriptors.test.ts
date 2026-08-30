@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { SHAPE_FIELDS, REPEATER_FIELDS, COLOUR_FIELDS, type FieldDescriptor } from './descriptors'
+import { SHAPE_FIELDS, REPEATER_FIELDS, COLOUR_FIELDS, STROKE_FIELDS, type FieldDescriptor } from './descriptors'
 
 const geometryFields: FieldDescriptor[] = [
   ...Object.values(SHAPE_FIELDS).flat(),
@@ -69,5 +69,22 @@ describe('descriptor modulation metadata', () => {
     for (const d of all.filter((x) => !x.perCopy)) {
       expect(d.rampTo, `${d.key} cannot vary, so a ramp target is misleading`).toBeUndefined()
     }
+  })
+
+  it('marks stroke width as varying per copy, with no ramp target (defaults to max)', () => {
+    // Stroke width resolves per instance in evaluate's resolveStyle exactly
+    // like the colour channels, via `resolve(style.stroke.width, ctx)` with a
+    // per-node ctx -- so, like them, it must be perCopy. Pinning min/max/unit
+    // too: a wrong-implementation that swapped in COLOUR_FIELDS' 'a' shape
+    // (min 0, max 1, no unit) instead of a genuine width descriptor would
+    // still be perCopy with no rampTo and slip past a looser check.
+    expect(STROKE_FIELDS).toHaveLength(1)
+    const width = STROKE_FIELDS.find((d) => d.key === 'width')!
+    expect(width).toBeDefined()
+    expect(width.perCopy).toBe(true)
+    expect(width.rampTo).toBeUndefined()
+    expect(width.min).toBe(0)
+    expect(width.max).toBe(40)
+    expect(width.unit).toBe('px')
   })
 })

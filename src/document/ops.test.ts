@@ -1,9 +1,11 @@
 import { describe, it, expect } from 'vitest'
-import { emptyDocument } from './defaults'
+import { emptyDocument, defaultLayer, DEFAULT_FILL, DEFAULT_STROKE } from './defaults'
+import { documentSchema } from './schema'
 import {
   addLayer, removeLayer, duplicateLayer, moveLayer, renameLayer,
   setLayerVisible, updateLayer, setShapeType, setCanvasSize,
   setShapeField, setRepeaterField, setFillChannel,
+  setFill, setStroke, setStrokeChannel, setStrokeWidth,
 } from './ops'
 
 const withLayer = () => addLayer(emptyDocument(), 'halo')
@@ -38,10 +40,39 @@ describe('document ops', () => {
       () => updateLayer(doc, id, (l) => ({ ...l, opacity: 0.2 })),
       () => setShapeType(doc, id, 'ellipse'),
       () => setCanvasSize(doc, 800, 600),
+      () => setFill(doc, id, { l: 0.5, c: 0.1, h: 10, a: 1 }),
+      () => setFill(doc, id, undefined),
+      () => setFill(doc, 'nope', undefined),
+      () => setStroke(doc, id, DEFAULT_STROKE),
+      () => setStroke(doc, id, undefined),
+      () => setStroke(doc, 'nope', undefined),
+      () => setStrokeChannel(doc, id, 'h', 10),
+      () => setStrokeChannel(doc, 'nope', 'h', 10),
+      () => setStrokeWidth(doc, id, 10),
+      () => setStrokeWidth(doc, 'nope', 10),
     ]
     for (const call of calls) {
       call()
       expect(JSON.stringify(doc)).toBe(snapshot)
+    }
+  })
+
+  it('never mutates the input document when a stroke is already present', () => {
+    // The sweep above never applies setStrokeChannel/setStrokeWidth to a layer
+    // that actually has a stroke -- both are no-ops there, so a mutate-in-place
+    // bug in the "has a stroke" branch would ship undetected. Build a document
+    // with a real stroke and re-check purity against it specifically.
+    const base = withLayer()
+    const id = base.layers[0].id
+    const withStroke = setStroke(base, id, DEFAULT_STROKE)
+    const snapshot = JSON.stringify(withStroke)
+    const calls: Array<() => unknown> = [
+      () => setStrokeChannel(withStroke, id, 'h', 99),
+      () => setStrokeWidth(withStroke, id, 99),
+    ]
+    for (const call of calls) {
+      call()
+      expect(JSON.stringify(withStroke)).toBe(snapshot)
     }
   })
 
@@ -197,5 +228,144 @@ describe('field setters', () => {
     let doc = seeded()
     doc = updateLayer(doc, doc.layers[0].id, (l) => ({ ...l, style: {} }))
     expect(setFillChannel(doc, doc.layers[0].id, 'h', 42).layers[0].style.fill).toBeUndefined()
+  })
+
+  it("gives a fresh layer the DEFAULT_FILL constant, not an independent copy of the same values", () => {
+    // Guards the brief's "one definition" requirement: a fresh layer's fill
+    // must literally be DEFAULT_FILL, not a second inlined object that only
+    // happens to match today. toEqual alone would pass even if defaultLayer
+    // still inlined its own literal, so this is a value check, not identity --
+    // but it fails the moment the two constants drift apart.
+    expect(defaultLayer('x').style.fill).toEqual(DEFAULT_FILL)
+  })
+})
+
+describe('fill and stroke ops', () => {
+  const seeded = () => addLayer(emptyDocument(), 'halo')
+  const someFill = { l: 0.5, c: 0.1, h: 10, a: 1 }
+
+  it('sets the fill, leaving an existing stroke untouched', () => {
+    // Fixture starts with a stroke so there is something for setFill to leak
+    // into -- a fixture with no stroke can't fail against a `{ fill }`
+    // implementation that clobbers the rest of style.
+    const base = seeded()
+    const id = base.layers[0].id
+    const withStroke = setStroke(base, id, DEFAULT_STROKE)
+    const out = setFill(withStroke, id, someFill)
+    expect(out.layers[0].style.fill).toEqual(someFill)
+    expect(out.layers[0].style.stroke).toEqual(DEFAULT_STROKE)
+  })
+
+  it('clears the fill by deleting the key, not by setting it to undefined', () => {
+    // toEqual/toBeUndefined cannot tell {fill: undefined} apart from a missing
+    // key -- vitest's structural equality ignores undefined-valued properties.
+    // hasOwnProperty is the only check a `{ ...style, fill: undefined }`
+    // implementation would actually fail.
+    const doc = seeded()
+    const out = setFill(doc, doc.layers[0].id, undefined)
+    expect(Object.prototype.hasOwnProperty.call(out.layers[0].style, 'fill')).toBe(false)
+  })
+
+  it('leaves the document alone when setting fill on an unknown id', () => {
+    const doc = seeded()
+    expect(setFill(doc, 'nope', someFill)).toBe(doc)
+  })
+
+  it('sets the stroke, leaving the existing fill untouched', () => {
+    // seeded()'s layer already has a fill (defaultLayer's default) -- a
+    // fixture with no fill can't fail against a `{ stroke }` implementation
+    // that clobbers the rest of style.
+    const doc = seeded()
+    const existingFill = doc.layers[0].style.fill
+    const out = setStroke(doc, doc.layers[0].id, DEFAULT_STROKE)
+    expect(out.layers[0].style.stroke).toEqual(DEFAULT_STROKE)
+    expect(out.layers[0].style.fill).toEqual(existingFill)
+  })
+
+  it('does not store the caller\'s fill or stroke object by reference', () => {
+    // setShapeType's precedent: structuredClone(DEFAULT_SHAPES[type]) exists
+    // precisely so two layers built from one module-level default don't share
+    // a nested object. DEFAULT_STROKE and DEFAULT_FILL are exactly such
+    // constants, and Brief 2 calls setStroke(doc, id, stash ?? DEFAULT_STROKE)
+    // directly -- so two layers enabled from scratch must not end up aliasing
+    // one colour object. Mutate the layer's stored colour afterwards and
+    // confirm the shared source constant is untouched.
+    const base = seeded()
+    const id = base.layers[0].id
+
+    const fillSource = { l: 0.5, c: 0.1, h: 10, a: 1 }
+    const withFill = setFill(base, id, fillSource)
+    withFill.layers[0].style.fill!.h = 999
+    expect(fillSource.h).toBe(10)
+
+    const strokeSnapshot = JSON.stringify(DEFAULT_STROKE)
+    const withStroke = setStroke(base, id, DEFAULT_STROKE)
+    withStroke.layers[0].style.stroke!.colour.h = 999
+    withStroke.layers[0].style.stroke!.width = 999
+    expect(JSON.stringify(DEFAULT_STROKE)).toBe(strokeSnapshot)
+  })
+
+  it('clears the stroke by deleting the key, not by setting it to undefined', () => {
+    const base = seeded()
+    const id = base.layers[0].id
+    const set = setStroke(base, id, DEFAULT_STROKE)
+    const cleared = setStroke(set, id, undefined)
+    expect(Object.prototype.hasOwnProperty.call(cleared.layers[0].style, 'stroke')).toBe(false)
+  })
+
+  it('leaves the document alone when setting stroke on an unknown id', () => {
+    const doc = seeded()
+    expect(setStroke(doc, 'nope', DEFAULT_STROKE)).toBe(doc)
+  })
+
+  it('sets a stroke channel', () => {
+    const base = seeded()
+    const id = base.layers[0].id
+    const withStroke = setStroke(base, id, DEFAULT_STROKE)
+    const out = setStrokeChannel(withStroke, id, 'h', 42)
+    expect(out.layers[0].style.stroke!.colour.h).toBe(42)
+  })
+
+  it('leaves a layer without a stroke alone (channel)', () => {
+    const doc = seeded()
+    expect(setStrokeChannel(doc, doc.layers[0].id, 'h', 42).layers[0].style.stroke).toBeUndefined()
+  })
+
+  it('leaves the document alone when setting a stroke channel on an unknown id', () => {
+    const doc = seeded()
+    expect(setStrokeChannel(doc, 'nope', 'h', 42)).toBe(doc)
+  })
+
+  it('sets the stroke width', () => {
+    const base = seeded()
+    const id = base.layers[0].id
+    const withStroke = setStroke(base, id, DEFAULT_STROKE)
+    const out = setStrokeWidth(withStroke, id, 12)
+    expect(out.layers[0].style.stroke!.width).toBe(12)
+  })
+
+  it('leaves a layer without a stroke alone (width)', () => {
+    const doc = seeded()
+    expect(setStrokeWidth(doc, doc.layers[0].id, 12).layers[0].style.stroke).toBeUndefined()
+  })
+
+  it('leaves the document alone when setting stroke width on an unknown id', () => {
+    const doc = seeded()
+    expect(setStrokeWidth(doc, 'nope', 12)).toBe(doc)
+  })
+
+  it('validates both a stroke-only layer and a fill-only layer against documentSchema', () => {
+    const base = seeded()
+    const id = base.layers[0].id
+
+    const strokeOnly = setFill(setStroke(base, id, DEFAULT_STROKE), id, undefined)
+    expect(strokeOnly.layers[0].style.fill).toBeUndefined()
+    expect(strokeOnly.layers[0].style.stroke).toBeDefined()
+    expect(documentSchema.safeParse(strokeOnly).success).toBe(true)
+
+    const fillOnly = base
+    expect(fillOnly.layers[0].style.fill).toBeDefined()
+    expect(fillOnly.layers[0].style.stroke).toBeUndefined()
+    expect(documentSchema.safeParse(fillOnly).success).toBe(true)
   })
 })

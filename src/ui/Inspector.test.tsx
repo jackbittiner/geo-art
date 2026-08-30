@@ -3,7 +3,7 @@ import { render, screen, fireEvent, within } from '@testing-library/react'
 import { describe, it, expect, beforeEach } from 'vitest'
 import Inspector from './Inspector'
 import { useStore } from '../state/store'
-import { emptyDocument, defaultLayer } from '../document/defaults'
+import { emptyDocument, defaultLayer, DEFAULT_FILL, DEFAULT_STROKE } from '../document/defaults'
 
 function seed() {
   const doc = emptyDocument()
@@ -25,7 +25,8 @@ describe('Inspector', () => {
     render(<Inspector />)
     expect(screen.getByTestId('card-shape')).toBeDefined()
     expect(screen.getByTestId('card-repeater-0')).toBeDefined()
-    expect(screen.getByTestId('card-style')).toBeDefined()
+    expect(screen.getByTestId('card-fill')).toBeDefined()
+    expect(screen.getByTestId('card-stroke')).toBeDefined()
   })
 
   it('renders one row per descriptor for the shape type', () => {
@@ -115,7 +116,7 @@ describe('Inspector', () => {
     expect(screen.getByLabelText('repeat 1 spin')).toBeDefined()
   })
 
-  it('omits the style card for a layer with no fill', () => {
+  it('renders the fill card in its off state for a layer with no fill, without crashing', () => {
     const doc = useStore.getState().doc
     useStore.setState({
       doc: {
@@ -123,9 +124,200 @@ describe('Inspector', () => {
         layers: [{ ...doc.layers[0], style: {} }],
       },
     })
-    render(<Inspector />)
-    expect(screen.queryByTestId('card-style')).toBeNull()
+    expect(() => render(<Inspector />)).not.toThrow()
+    expect(screen.getByTestId('card-fill')).toBeDefined()
     expect(screen.queryByLabelText('fill hue')).toBeNull()
+  })
+
+  it('renders the fill cards four channels for a layer with a fill', () => {
+    render(<Inspector />)
+    expect(screen.getByLabelText('fill lightness')).toBeDefined()
+    expect(screen.getByLabelText('fill chroma')).toBeDefined()
+    expect(screen.getByLabelText('fill hue')).toBeDefined()
+    expect(screen.getByLabelText('fill alpha')).toBeDefined()
+  })
+
+  // This is the bug Phase 1 shipped: gating the whole style section on
+  // layer.style.fill left a stroke-only layer (the Moiré starter's rings)
+  // with no colour controls at all. Assert the stroke card's own rows render
+  // *and* that no fill row leaks in -- the fill gate must be gone, not just
+  // relocated.
+  it('renders the stroke cards colour and width rows for a stroke-only layer, with no fill rows', () => {
+    const doc = useStore.getState().doc
+    useStore.setState({
+      doc: {
+        ...doc,
+        layers: [
+          {
+            ...doc.layers[0],
+            style: { stroke: { colour: { l: 0.6, c: 0.2, h: 200, a: 1 }, width: 3 } },
+          },
+        ],
+      },
+    })
+    render(<Inspector />)
+    expect(screen.getByLabelText('stroke lightness')).toBeDefined()
+    expect(screen.getByLabelText('stroke chroma')).toBeDefined()
+    expect(screen.getByLabelText('stroke hue')).toBeDefined()
+    expect(screen.getByLabelText('stroke alpha')).toBeDefined()
+    expect(screen.getByLabelText('stroke width')).toBeDefined()
+    expect(screen.queryByLabelText('fill lightness')).toBeNull()
+    expect(screen.queryByLabelText('fill chroma')).toBeNull()
+    expect(screen.queryByLabelText('fill hue')).toBeNull()
+    expect(screen.queryByLabelText('fill alpha')).toBeNull()
+  })
+
+  it('edits a stroke colour channel', () => {
+    const doc = useStore.getState().doc
+    useStore.setState({
+      doc: {
+        ...doc,
+        layers: [
+          {
+            ...doc.layers[0],
+            style: { stroke: { colour: { l: 0.6, c: 0.2, h: 200, a: 1 }, width: 3 } },
+          },
+        ],
+      },
+    })
+    render(<Inspector />)
+    fireEvent.change(screen.getByLabelText('stroke hue'), { target: { value: '55' } })
+    expect(useStore.getState().doc.layers[0].style.stroke!.colour.h).toBe(55)
+  })
+
+  it('edits the stroke width', () => {
+    const doc = useStore.getState().doc
+    useStore.setState({
+      doc: {
+        ...doc,
+        layers: [
+          {
+            ...doc.layers[0],
+            style: { stroke: { colour: { l: 0.6, c: 0.2, h: 200, a: 1 }, width: 3 } },
+          },
+        ],
+      },
+    })
+    render(<Inspector />)
+    fireEvent.change(screen.getByLabelText('stroke width'), { target: { value: '9' } })
+    expect(useStore.getState().doc.layers[0].style.stroke!.width).toBe(9)
+  })
+
+  it('turns fill off, clearing it from the document', () => {
+    render(<Inspector />)
+    fireEvent.click(screen.getByLabelText('Toggle fill'))
+    expect(useStore.getState().doc.layers[0].style.fill).toBeUndefined()
+    expect(screen.queryByLabelText('fill hue')).toBeNull()
+    expect(screen.getByTestId('card-fill').textContent).toMatch(/no fill/i)
+  })
+
+  it('restores the same fill colour when toggled back on, not a default', () => {
+    const doc = useStore.getState().doc
+    const customFill = { l: 0.3, c: 0.25, h: 15, a: 0.9 }
+    useStore.setState({
+      doc: {
+        ...doc,
+        layers: [{ ...doc.layers[0], style: { ...doc.layers[0].style, fill: customFill } }],
+      },
+    })
+    render(<Inspector />)
+    fireEvent.click(screen.getByLabelText('Toggle fill'))
+    expect(useStore.getState().doc.layers[0].style.fill).toBeUndefined()
+    fireEvent.click(screen.getByLabelText('Toggle fill'))
+    expect(useStore.getState().doc.layers[0].style.fill).toEqual(customFill)
+  })
+
+  it('gives the default fill for a layer whose fill was never customised', () => {
+    const doc = useStore.getState().doc
+    useStore.setState({ doc: { ...doc, layers: [{ ...doc.layers[0], style: {} }] } })
+    render(<Inspector />)
+    // Never toggled off in this session, so there is nothing stashed for it.
+    fireEvent.click(screen.getByLabelText('Toggle fill'))
+    expect(useStore.getState().doc.layers[0].style.fill).toEqual(DEFAULT_FILL)
+  })
+
+  it('turns stroke off, clearing it from the document', () => {
+    const doc = useStore.getState().doc
+    useStore.setState({
+      doc: {
+        ...doc,
+        layers: [
+          {
+            ...doc.layers[0],
+            style: { stroke: { colour: { l: 0.6, c: 0.2, h: 200, a: 1 }, width: 3 } },
+          },
+        ],
+      },
+    })
+    render(<Inspector />)
+    fireEvent.click(screen.getByLabelText('Toggle stroke'))
+    expect(useStore.getState().doc.layers[0].style.stroke).toBeUndefined()
+    expect(screen.queryByLabelText('stroke hue')).toBeNull()
+    expect(screen.getByTestId('card-stroke').textContent).toMatch(/no stroke/i)
+  })
+
+  it('restores the same stroke when toggled back on, not a default', () => {
+    const doc = useStore.getState().doc
+    const customStroke = { colour: { l: 0.4, c: 0.3, h: 320, a: 0.7 }, width: 11 }
+    useStore.setState({
+      doc: {
+        ...doc,
+        layers: [{ ...doc.layers[0], style: { ...doc.layers[0].style, stroke: customStroke } }],
+      },
+    })
+    render(<Inspector />)
+    fireEvent.click(screen.getByLabelText('Toggle stroke'))
+    expect(useStore.getState().doc.layers[0].style.stroke).toBeUndefined()
+    fireEvent.click(screen.getByLabelText('Toggle stroke'))
+    expect(useStore.getState().doc.layers[0].style.stroke).toEqual(customStroke)
+  })
+
+  it('gives the default stroke for a fill-only layer that never had one', () => {
+    render(<Inspector />)
+    // defaultLayer has a fill and no stroke -- nothing stashed for stroke yet.
+    fireEvent.click(screen.getByLabelText('Toggle stroke'))
+    expect(useStore.getState().doc.layers[0].style.stroke).toEqual(DEFAULT_STROKE)
+  })
+
+  it('shows both cards in their off state, plus a note, for a layer with neither fill nor stroke, and does not crash', () => {
+    const doc = useStore.getState().doc
+    useStore.setState({ doc: { ...doc, layers: [{ ...doc.layers[0], style: {} }] } })
+    expect(() => render(<Inspector />)).not.toThrow()
+    expect(screen.getByTestId('card-fill').textContent).toMatch(/no fill/i)
+    expect(screen.getByTestId('card-stroke').textContent).toMatch(/no stroke/i)
+    expect(screen.getByTestId('note-no-style')).toBeDefined()
+  })
+
+  // Two visibly different colours -- fill a warm, opaque, high-chroma hue and
+  // stroke a cool, translucent, low-chroma one -- so a swatch accidentally
+  // built from the fill would produce a plainly different string, not one
+  // that happens to coincide.
+  it('builds the stroke colour swatch from the strokes own channels, not the fills', () => {
+    const doc = useStore.getState().doc
+    useStore.setState({
+      doc: {
+        ...doc,
+        layers: [
+          {
+            ...doc.layers[0],
+            repeaters: [{ ...doc.layers[0].repeaters[0], count: 2 }],
+            style: {
+              fill: { l: 0.9, c: 0.45, h: 10, a: 1 },
+              stroke: {
+                colour: { l: 0.2, c: 0.05, h: { base: 100, to: 300, source: 'index', curve: 'linear' }, a: 0.6 },
+                width: 2,
+              },
+            },
+          },
+        ],
+      },
+    })
+    render(<Inspector />)
+    const cells = within(screen.getByTestId('field-stroke-h')).getAllByTestId('ramp-cell')
+    expect(cells.map((c) => c.getAttribute('data-colour'))).toEqual([
+      'oklch(20% 0.05 100 / 0.6)',
+      'oklch(20% 0.05 300 / 0.6)',
+    ])
   })
 
   it('renders no repeater cards for a layer with an empty repeater chain', () => {
@@ -140,7 +332,7 @@ describe('Inspector', () => {
     expect(screen.queryByTestId('card-repeater-0')).toBeNull()
     // The shape and style cards -- unaffected by the repeater chain -- still render.
     expect(screen.getByTestId('card-shape')).toBeDefined()
-    expect(screen.getByTestId('card-style')).toBeDefined()
+    expect(screen.getByTestId('card-fill')).toBeDefined()
   })
 
   // The Aperture starter ships a modulated spin, which Phase 1 cannot edit --
@@ -205,7 +397,7 @@ describe('Inspector', () => {
     expect((screen.getByLabelText('shape sides') as HTMLInputElement).step).toBe('1')
 
     // The readouts agree with the document, not with a clamped slider.
-    expect(screen.getByTestId('card-style').textContent).toContain('0.45')
+    expect(screen.getByTestId('card-fill').textContent).toContain('0.45')
     expect(screen.getByTestId('card-repeater-0').textContent).toContain('4.5')
 
     // And rendering alone wrote nothing: the document is the same object.
