@@ -42,6 +42,11 @@ export type FieldDescriptor = {
    * even with a single repeater. The `~` toggle renders only where this is
    * set: radial's count, radius and startAngle resolve against the *parent*
    * context and would silently do nothing. See spec §4a.
+   *
+   * Which context a field resolves against is declared here rather than
+   * assumed at the call site, because the Inspector also picks a ramp
+   * preview's denominator from it: a child-resolved field sweeps its own
+   * link's copies, a parent-resolved one sweeps the link above.
    */
   perCopy?: boolean
 }

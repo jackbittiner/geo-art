@@ -479,6 +479,19 @@ describe('moveRepeater', () => {
     expect(moveRepeater(two, id, 0, -1)).toBe(two)
     expect(moveRepeater(two, id, 1, 1)).toBe(two)
   })
+
+  it('returns the document by reference for a move of zero', () => {
+    // Both range checks pass, so without an explicit guard the splice-out /
+    // splice-in rebuilds an identical array behind a new reference: the
+    // document changes identity, `apply` banks an undo entry, and undoing it
+    // does nothing visible. Reference equality, not deep equality, is the
+    // assertion that catches it.
+    const base = withLayer()
+    const id = base.layers[0].id
+    const two = addRepeater(base, id, 'grid')
+    expect(moveRepeater(two, id, 0, 0)).toBe(two)
+    expect(moveRepeater(two, id, 1, 0)).toBe(two)
+  })
 })
 
 describe('setRepeaterType', () => {

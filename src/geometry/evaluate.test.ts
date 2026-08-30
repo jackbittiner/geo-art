@@ -199,6 +199,42 @@ describe('per-level counts', () => {
     doc.layers.push(layer)
     expect(evaluate(doc).perLayerLevelCounts[layer.id]).toEqual([])
     expect(evaluate(doc).perLayerLevelTruncated[layer.id]).toEqual([])
+    expect(evaluate(doc).perLayerLevelUniform[layer.id]).toEqual([])
+  })
+
+  it('reports a link whose parents each contributed the same count as uniform', () => {
+    const doc = emptyDocument()
+    const layer = defaultLayer('halo')
+    layer.repeaters = [
+      { type: 'radial', count: 3, radius: 100, startAngle: 0, spin: 0 },
+      { type: 'grid', rows: 2, cols: 2, spacingX: 10, spacingY: 10, spin: 0 },
+    ]
+    doc.layers.push(layer)
+    expect(evaluate(doc).perLayerLevelUniform[layer.id]).toEqual([true, true])
+  })
+
+  it('reports a link whose parents contributed different counts as non-uniform', () => {
+    // A later link's `count` resolves against the *parent* context, so it can
+    // legitimately differ per parent with no budget pressure at all: parent 0
+    // gets u = 0 and 2 children, parent 1 gets u = 1 and 4. The cumulative 6
+    // divides its parent 2 exactly, and truncation never happened, so nothing
+    // else in the result can reveal that no link here produces 3.
+    const doc = emptyDocument()
+    const layer = defaultLayer('halo')
+    layer.repeaters = [
+      { type: 'radial', count: 2, radius: 100, startAngle: 0, spin: 0 },
+      {
+        type: 'radial',
+        count: { base: 2, to: 4, source: 'index', curve: 'linear' },
+        radius: 50, startAngle: 0, spin: 0,
+      },
+    ]
+    doc.layers.push(layer)
+
+    const result = evaluate(doc)
+    expect(result.perLayerLevelCounts[layer.id]).toEqual([2, 6])
+    expect(result.perLayerLevelTruncated[layer.id]).toEqual([false, false])
+    expect(result.perLayerLevelUniform[layer.id]).toEqual([true, false])
   })
 
   it('composes the chain in order, not merely to the right total', () => {

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { render, screen, fireEvent, within } from '@testing-library/react'
 import { describe, it, expect, beforeEach } from 'vitest'
-import Inspector, { chainCountLabel, levelCopies, truncatedThrough } from './Inspector'
+import Inspector, { chainCountLabel, levelCopies, unrecoverableThrough } from './Inspector'
 import { useStore } from '../state/store'
 import { emptyDocument, defaultLayer, DEFAULT_FILL, DEFAULT_STROKE } from '../document/defaults'
 import { emptyHistory } from '../state/history'
@@ -9,7 +9,7 @@ import { isModulated, type Modulated } from '../geometry/field'
 // Every fixture below is seeded through defaultLayer/seed(), which always
 // starts with a radial repeater, so this narrowing is honest rather than a
 // cast papering over doubt about the union.
-import type { RadialConfig } from '../geometry/repeaters'
+import type { RadialConfig, RepeaterConfig } from '../geometry/repeaters'
 
 function seed() {
   const doc = emptyDocument()
@@ -789,6 +789,81 @@ describe('Inspector', () => {
       expect(screen.getByTestId('repeater-count-1').textContent).toBe('100000')
       expect(screen.getByTestId('repeater-count-2').textContent).toBe('100000')
     })
+
+    /** Replaces the selected layer's chain, leaving everything else alone. */
+    function withRepeaters(repeaters: RepeaterConfig[]) {
+      const doc = useStore.getState().doc
+      useStore.setState({
+        doc: { ...doc, layers: [{ ...doc.layers[0], repeaters }] },
+      })
+    }
+
+    it('shows a bare count for a link whose parents contributed unequally', () => {
+      // Link 2's count resolves against the parent context, so parent 0 makes
+      // 2 copies and parent 1 makes 4. Nothing is truncated and 6 divides 2
+      // exactly, so "2 × 3 = 6" reads as arithmetic while naming a 3 that no
+      // link in this document produces.
+      withRepeaters([
+        { type: 'radial', count: 2, radius: 100, startAngle: 0, spin: 0 },
+        {
+          type: 'radial',
+          count: { base: 2, to: 4, source: 'index', curve: 'linear' },
+          radius: 50, startAngle: 0, spin: 0,
+        },
+      ])
+      render(<Inspector />)
+      expect(screen.getByTestId('repeater-count-0').textContent).toBe('2')
+      expect(screen.getByTestId('repeater-count-1').textContent).toBe('6')
+    })
+
+    it('previews a link’s own spin over the layer total when its parents differ', () => {
+      // The same chain: the engine sweeps 2 copies under one parent and 4
+      // under the other, so there is no per-parent count to normalise
+      // against. Fall back to the layer's 6, as truncation already does.
+      withRepeaters([
+        { type: 'radial', count: 2, radius: 100, startAngle: 0, spin: 0 },
+        {
+          type: 'radial',
+          count: { base: 2, to: 4, source: 'index', curve: 'linear' },
+          radius: 50, startAngle: 0,
+          spin: { base: 0, to: 90, source: 'index', curve: 'linear' },
+        },
+      ])
+      render(<Inspector />)
+      expect(cellsOf('repeat 2 spin preview')).toHaveLength(6)
+    })
+
+    it('previews a parent-resolved field over the link above it', () => {
+      // radius is resolved against the *parent* context, so the engine gives
+      // the four rings of link 1 four distinct radii and every copy within a
+      // ring the same one. Normalised against link 2's own 3 copies the strip
+      // showed three cells sweeping values the engine never produces.
+      withRepeaters([
+        { type: 'radial', count: 4, radius: 200, startAngle: 0, spin: 0 },
+        {
+          type: 'radial', count: 3,
+          radius: { base: 100, to: 300, source: 'index', curve: 'linear' },
+          startAngle: 0, spin: 0,
+        },
+      ])
+      render(<Inspector />)
+      expect(cellsOf('repeat 2 radius preview')).toHaveLength(4)
+    })
+
+    it('previews a parent-resolved field on the first link over its single root parent', () => {
+      // The first link's parent is the one root placement, where an `index`
+      // ramp has nothing to sweep: the engine holds radius flat at 100. One
+      // cell says that; twelve promise a sweep that never happens.
+      withRepeaters([
+        {
+          type: 'radial', count: 12,
+          radius: { base: 100, to: 300, source: 'index', curve: 'linear' },
+          startAngle: 0, spin: 0,
+        },
+      ])
+      render(<Inspector />)
+      expect(cellsOf('repeat 1 radius preview')).toHaveLength(1)
+    })
   })
 })
 
@@ -829,13 +904,13 @@ describe('chainCountLabel', () => {
 
 describe('levelCopies', () => {
   it('gives the first link its own count', () => {
-    expect(levelCopies([12, 108], [false, false], 0, 108)).toBe(12)
+    expect(levelCopies([12, 108], [false, false], [true, true], 0, 108)).toBe(12)
   })
 
   it('gives a later link its contribution per parent copy', () => {
     // 108 cumulative over 12 parents is 9 copies each -- the ramp a field on
     // that link actually sweeps.
-    expect(levelCopies([12, 108], [false, false], 1, 108)).toBe(9)
+    expect(levelCopies([12, 108], [false, false], [true, true], 1, 108)).toBe(9)
   })
 
   it('falls back to the layer total where the level was cut short', () => {
@@ -843,36 +918,58 @@ describe('levelCopies', () => {
     // cells and most rings got none. No contribution can be recovered from a
     // truncated level, so hand back the layer total the caveat already covers
     // rather than inventing one.
-    expect(levelCopies([200, 100_000], [false, true], 1, 100_000)).toBe(100_000)
+    expect(levelCopies([200, 100_000], [false, true], [true, true], 1, 100_000)).toBe(100_000)
   })
 
   it('falls back for a link below a truncated one', () => {
-    expect(levelCopies([200, 100_000, 100_000], [false, true, false], 2, 100_000)).toBe(100_000)
+    expect(levelCopies([200, 100_000, 100_000], [false, true, false], [true, true, true], 2, 100_000)).toBe(100_000)
+  })
+
+  it('falls back where the level’s parents contributed unequally', () => {
+    // [radial(2), radial(count 2 → 4)]: 6 / 2 = 3, and no link makes 3.
+    // Nothing truncated, so only the uniformity flag can catch it.
+    expect(levelCopies([2, 6], [false, false], [true, false], 1, 6)).toBe(6)
   })
 
   it('falls back when there is no such level', () => {
     // A layer with no repeaters: one instance, no levels to divide.
-    expect(levelCopies([], [], -1, 1)).toBe(1)
+    expect(levelCopies([], [], [], -1, 1)).toBe(1)
   })
 })
 
-describe('truncatedThrough', () => {
+describe('unrecoverableThrough', () => {
   it('is false when nothing was cut short', () => {
-    expect(truncatedThrough([false, false], 1)).toBe(false)
+    expect(unrecoverableThrough([false, false], [true, true], 1)).toBe(false)
   })
 
   it('is true at the level that was cut short', () => {
-    expect(truncatedThrough([false, true], 1)).toBe(true)
+    expect(unrecoverableThrough([false, true], [true, true], 1)).toBe(true)
   })
 
   it('is false above the level that was cut short', () => {
     // Level 0 ran to completion; its own count is still a fact.
-    expect(truncatedThrough([false, true], 0)).toBe(false)
+    expect(unrecoverableThrough([false, true], [true, true], 0)).toBe(false)
   })
 
   it('stays true below the level that was cut short', () => {
     // Everything downstream of a cut level is expanding an incomplete set of
     // parents, so no product through it describes what happened.
-    expect(truncatedThrough([false, true, false], 2)).toBe(true)
+    expect(unrecoverableThrough([false, true, false], [true, true, true], 2)).toBe(true)
+  })
+
+  it('is true at a level whose parents contributed unequally', () => {
+    // Nothing was truncated: the link's own count is modulated against the
+    // parent context, so each parent asked for a different number of copies.
+    expect(unrecoverableThrough([false, false], [true, false], 1)).toBe(true)
+  })
+
+  it('is false above a non-uniform level', () => {
+    expect(unrecoverableThrough([false, false], [true, false], 0)).toBe(false)
+  })
+
+  it('stays true below a non-uniform level', () => {
+    // Same propagation as truncation, for the same reason: a link below one
+    // cannot factor a set of parents that itself has no single factor.
+    expect(unrecoverableThrough([false, false, false], [true, false, true], 2)).toBe(true)
   })
 })

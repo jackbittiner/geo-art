@@ -31,13 +31,24 @@ const ICON_BUTTON =
   'rounded px-1 text-neutral-500 hover:bg-neutral-800 hover:text-neutral-100 disabled:opacity-30 disabled:hover:bg-transparent'
 
 /**
- * True when this link, or any link above it, was cut short by the instance
- * budget -- so nothing derived from its cumulative count by division (the
- * count label's factorisation, a ramp preview's denominator) describes what
- * actually happened.
+ * True when this link, or any link above it, produced a cumulative count that
+ * cannot be divided back into a per-parent contribution -- so nothing derived
+ * from it by division (the count label's factorisation, a ramp preview's
+ * denominator) describes what actually happened.
+ *
+ * Two causes, both invisible to the arithmetic and both recorded by the
+ * engine: the instance budget cut the link short, or the link expanded its
+ * parents unequally because its own `count`/`rows`/`cols` is modulated against
+ * the parent context. Either way the damage propagates downward -- a link
+ * below one of these is expanding a set of parents it cannot account for.
  */
-export function truncatedThrough(levelTruncated: boolean[], index: number): boolean {
-  return levelTruncated.slice(0, index + 1).some(Boolean)
+export function unrecoverableThrough(
+  levelTruncated: boolean[], levelUniform: boolean[], index: number,
+): boolean {
+  for (let i = 0; i <= index && i < levelTruncated.length; i++) {
+    if (levelTruncated[i] || levelUniform[i] === false) return true
+  }
+  return false
 }
 
 /**
@@ -46,16 +57,17 @@ export function truncatedThrough(levelTruncated: boolean[], index: number): bool
  *
  * `perLayerLevelCounts` is cumulative, so a link's own contribution is the
  * ratio between its level and the one above: the same factor chainCountLabel
- * prints. Where a level did not run to completion that ratio describes
- * nothing that happened, so this falls back to the layer total -- the number
- * the preview used before this fix, carried by ModulatorEditor's existing
- * truncation caveat, rather than a freshly invented one.
+ * prints. Where that ratio describes nothing that happened, this falls back to
+ * the layer total -- the number the preview used before this fix, carried by
+ * ModulatorEditor's existing truncation caveat, rather than a freshly invented
+ * one.
  */
 export function levelCopies(
-  levels: number[], levelTruncated: boolean[], index: number, layerCount: number,
+  levels: number[], levelTruncated: boolean[], levelUniform: boolean[],
+  index: number, layerCount: number,
 ): number {
   if (index < 0 || index >= levels.length) return layerCount
-  if (truncatedThrough(levelTruncated, index)) return layerCount
+  if (unrecoverableThrough(levelTruncated, levelUniform, index)) return layerCount
   const previous = index === 0 ? 1 : levels[index - 1]
   if (previous <= 0) return layerCount
   return levels[index] / previous
@@ -64,19 +76,22 @@ export function levelCopies(
 /**
  * "12" for the first link, "12 × 9 = 108" after it.
  *
- * `truncated` is the engine's per-level flag, not arithmetic: a truncated
+ * `unrecoverable` is the engine's per-level reporting, not arithmetic, because
+ * the arithmetic cannot see either way a factorisation goes wrong. A truncated
  * level often *does* divide the level above exactly, because the budget is
- * round. [radial(200), grid(40×40)] against maxInstances 100_000 stops at
+ * round: [radial(200), grid(40×40)] against maxInstances 100_000 stops at
  * 100000, and 100000 / 200 is a clean 500 -- but there is no 500 anywhere in
- * that document. The grid has 1600 cells and only 63 of the 200 rings
- * received any at all. Where a level did not run to completion the bare
- * cumulative count is the only honest thing to show.
+ * that document. The grid has 1600 cells and only 63 of the 200 rings received
+ * any at all. A level whose parents contributed unequally divides exactly too:
+ * [radial(2), radial(count 2 → 4)] reaches 6, and 6 / 2 = 3 names a link that
+ * does not exist. In both cases the bare cumulative count is the only honest
+ * thing to show.
  */
 export function chainCountLabel(
-  previous: number, cumulative: number, index: number, truncated: boolean,
+  previous: number, cumulative: number, index: number, unrecoverable: boolean,
 ): string {
   if (index === 0) return String(cumulative)
-  if (truncated || previous <= 0 || cumulative % previous !== 0) return String(cumulative)
+  if (unrecoverable || previous <= 0 || cumulative % previous !== 0) return String(cumulative)
   return `${previous} × ${cumulative / previous} = ${cumulative}`
 }
 
@@ -146,11 +161,12 @@ export default function Inspector() {
   const layerCount = result.perLayerCounts[layer.id] ?? 0
   const levels = result.perLayerLevelCounts[layer.id] ?? []
   const levelTruncated = result.perLayerLevelTruncated[layer.id] ?? []
+  const levelUniform = result.perLayerLevelUniform[layer.id] ?? []
   // Shape, colour and stroke fields are resolved against the instance
   // context, whose innermost level is the last link of the chain -- so their
   // ramps sweep that link's copies, not the layer's. A layer with no
   // repeaters has no levels at all and falls back to its single instance.
-  const innerCopies = levelCopies(levels, levelTruncated, levels.length - 1, layerCount)
+  const innerCopies = levelCopies(levels, levelTruncated, levelUniform, levels.length - 1, layerCount)
   // Threaded down beside `count` rather than reached for from the editor:
   // `count` is the *emitted* copy count and a modulated field normalises
   // against the *intended* one, so under truncation the preview overstates.
@@ -231,7 +247,15 @@ export default function Inspector() {
         const previous = index === 0 ? 1 : (levels[index - 1] ?? 0)
         // A repeater's own perCopy fields (spin) resolve against the context
         // it builds, so they sweep its copies -- not the chain's product.
-        const copies = levelCopies(levels, levelTruncated, index, layerCount)
+        const copies = levelCopies(levels, levelTruncated, levelUniform, index, layerCount)
+        // Every other field on the card (count, radius, startAngle; rows,
+        // cols, spacing) is resolved against the *parent* context before this
+        // link exists, so a ramp on one sweeps the link above. The first
+        // link's parent is the single root placement, which is one copy: the
+        // engine holds such a ramp flat at `base`, and a one-cell strip says
+        // exactly that instead of promising a sweep that never happens.
+        const parentCopies =
+          index === 0 ? 1 : levelCopies(levels, levelTruncated, levelUniform, index - 1, layerCount)
         return (
           // Keyed by index AND type: the list reorders now, and a bare index
           // key makes React reuse the wrong card's DOM, so slider focus jumps
@@ -256,7 +280,10 @@ export default function Inspector() {
                 data-testid={`repeater-count-${index}`}
                 className="ml-auto shrink-0 tabular-nums normal-case tracking-normal text-neutral-600"
               >
-                {chainCountLabel(previous, cumulative, index, truncatedThrough(levelTruncated, index))}
+                {chainCountLabel(
+                  previous, cumulative, index,
+                  unrecoverableThrough(levelTruncated, levelUniform, index),
+                )}
               </span>
               <button
                 className={ICON_BUTTON}
@@ -281,7 +308,7 @@ export default function Inspector() {
                 scope={scope}
                 descriptor={descriptor}
                 value={record[descriptor.key]}
-                count={copies}
+                count={descriptor.perCopy ? copies : parentCopies}
                 layerCount={layerCount}
                 truncated={truncated}
                 onChange={(v) =>

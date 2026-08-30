@@ -130,6 +130,11 @@ export function moveRepeater(doc: Document, id: LayerId, index: number, delta: n
     const to = index + delta
     if (index < 0 || index >= l.repeaters.length) return l
     if (to < 0 || to >= l.repeaters.length) return l
+    // A move of nothing must return the layer itself: splicing an element out
+    // and straight back in rebuilds an identical array behind a new reference,
+    // which slips past updateLayer's identity guard and banks an undo entry
+    // whose undo does nothing visible.
+    if (delta === 0) return l
     const repeaters = [...l.repeaters]
     const [moved] = repeaters.splice(index, 1)
     repeaters.splice(to, 0, moved)

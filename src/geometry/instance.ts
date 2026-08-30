@@ -37,4 +37,17 @@ export type EvaluationResult = {
    * alone cannot tell a real factorisation from an invented one.
    */
   perLayerLevelTruncated: Record<string, boolean[]>
+  /**
+   * Whether every parent copy at each link contributed the same number of
+   * children. One entry per link, aligned with `perLayerLevelCounts`.
+   *
+   * Dividing a cumulative count by the one above it only recovers a link's own
+   * contribution when that link expanded every parent identically, and a link's
+   * `count` (or `rows`/`cols`) is a Field resolved against the *parent*
+   * context, so it need not: [radial(2), radial(count 2 -> 4)] makes 2 children
+   * under one parent and 4 under the other with nothing truncated, and the
+   * cumulative 6 divides its parent 2 exactly while no link in that document
+   * produces 3.
+   */
+  perLayerLevelUniform: Record<string, boolean[]>
 }
