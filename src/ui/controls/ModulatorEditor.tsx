@@ -11,8 +11,19 @@ type Props = {
   accessibleName: string
   descriptor: FieldDescriptor
   field: Modulated
-  /** Copies the layer actually has, so the preview and cycles read truthfully. */
+  /**
+   * Copies of the chain link this field resolves at -- the sweep an `index`
+   * or `t` ramp is spread over. For a repeater's own field that is the
+   * repeater's copy count; for shape, colour and stroke it is the innermost
+   * link's, because those resolve against the instance context.
+   */
   count: number
+  /**
+   * Copies the whole layer produces. Separate from `count` because the two
+   * differ the moment a layer chains two repeaters, and `flatIndex` is the
+   * one source that genuinely sweeps the layer rather than a single link.
+   */
+  layerCount: number
   /** The evaluation hit the instance budget, so the preview may overstate. */
   truncated?: boolean
   toColour?: (value: number) => string
@@ -28,8 +39,17 @@ const ROW = 'flex items-center gap-2 py-0.5 text-[11px]'
 const KEY = 'w-10 shrink-0 text-neutral-500'
 
 export default function ModulatorEditor({
-  idPrefix, accessibleName, descriptor, field, count, truncated, toColour, onChange, onCommit,
+  idPrefix, accessibleName, descriptor, field, count, layerCount, truncated, toColour, onChange, onCommit,
 }: Props) {
+  // Which denominator the strip normalises against depends on the source, so
+  // it is chosen here rather than picked once at the call site. `index` and
+  // `t` resolve within one link of the chain and sweep that link's copies;
+  // `flatIndex` runs across every instance the layer makes. With a single
+  // repeater those are the same number, which is how one count came to serve
+  // both -- chaining separates them, silently and without any budget
+  // pressure: [radial(12), grid(3x3)] with a fill hue 0 -> 240 ramp makes the
+  // engine restart every 9 copies while a 24-cell strip promised one sweep.
+  const copies = field.source === 'flatIndex' ? layerCount : count
   // A wrapping field can target a full turn in either direction; 400° is a
   // legal hue even though max is 360, because colourToCss wraps at render.
   //
@@ -119,7 +139,7 @@ export default function ModulatorEditor({
         */}
         <div className="min-w-0 flex-1">
           <RampPreview
-            values={previewValues(field, count)}
+            values={previewValues(field, copies)}
             label={`${accessibleName} preview`}
             toColour={descriptor.preview === 'gradient' ? toColour : undefined}
           />

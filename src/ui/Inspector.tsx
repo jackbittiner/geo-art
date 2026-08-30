@@ -41,6 +41,27 @@ export function truncatedThrough(levelTruncated: boolean[], index: number): bool
 }
 
 /**
+ * Copies one link of the chain contributes per parent copy -- the sweep an
+ * `index` or `t` ramp resolved at that link is spread over.
+ *
+ * `perLayerLevelCounts` is cumulative, so a link's own contribution is the
+ * ratio between its level and the one above: the same factor chainCountLabel
+ * prints. Where a level did not run to completion that ratio describes
+ * nothing that happened, so this falls back to the layer total -- the number
+ * the preview used before this fix, carried by ModulatorEditor's existing
+ * truncation caveat, rather than a freshly invented one.
+ */
+export function levelCopies(
+  levels: number[], levelTruncated: boolean[], index: number, layerCount: number,
+): number {
+  if (index < 0 || index >= levels.length) return layerCount
+  if (truncatedThrough(levelTruncated, index)) return layerCount
+  const previous = index === 0 ? 1 : levels[index - 1]
+  if (previous <= 0) return layerCount
+  return levels[index] / previous
+}
+
+/**
  * "12" for the first link, "12 × 9 = 108" after it.
  *
  * `truncated` is the engine's per-level flag, not arithmetic: a truncated
@@ -122,9 +143,14 @@ export default function Inspector() {
     )
   }
 
-  const count = result.perLayerCounts[layer.id] ?? 0
+  const layerCount = result.perLayerCounts[layer.id] ?? 0
   const levels = result.perLayerLevelCounts[layer.id] ?? []
   const levelTruncated = result.perLayerLevelTruncated[layer.id] ?? []
+  // Shape, colour and stroke fields are resolved against the instance
+  // context, whose innermost level is the last link of the chain -- so their
+  // ramps sweep that link's copies, not the layer's. A layer with no
+  // repeaters has no levels at all and falls back to its single instance.
+  const innerCopies = levelCopies(levels, levelTruncated, levels.length - 1, layerCount)
   // Threaded down beside `count` rather than reached for from the editor:
   // `count` is the *emitted* copy count and a modulated field normalises
   // against the *intended* one, so under truncation the preview overstates.
@@ -189,7 +215,8 @@ export default function Inspector() {
             scope="shape"
             descriptor={descriptor}
             value={shapeRecord[descriptor.key]}
-            count={count}
+            count={innerCopies}
+            layerCount={layerCount}
             truncated={truncated}
             onChange={(v) => apply((d) => setShapeField(d, layer.id, descriptor.key, v), `shape-${descriptor.key}`)}
             onCommit={endCoalesce}
@@ -202,6 +229,9 @@ export default function Inspector() {
         const scope = `repeat ${index + 1}`
         const cumulative = levels[index] ?? 0
         const previous = index === 0 ? 1 : (levels[index - 1] ?? 0)
+        // A repeater's own perCopy fields (spin) resolve against the context
+        // it builds, so they sweep its copies -- not the chain's product.
+        const copies = levelCopies(levels, levelTruncated, index, layerCount)
         return (
           // Keyed by index AND type: the list reorders now, and a bare index
           // key makes React reuse the wrong card's DOM, so slider focus jumps
@@ -251,7 +281,8 @@ export default function Inspector() {
                 scope={scope}
                 descriptor={descriptor}
                 value={record[descriptor.key]}
-                count={count}
+                count={copies}
+                layerCount={layerCount}
                 truncated={truncated}
                 onChange={(v) =>
                   apply(
@@ -290,7 +321,8 @@ export default function Inspector() {
               scope="fill"
               descriptor={descriptor}
               value={layer.style.fill![descriptor.key as 'l' | 'c' | 'h' | 'a']}
-              count={count}
+              count={innerCopies}
+              layerCount={layerCount}
               truncated={truncated}
               toColour={swatchFor(layer.style.fill!)(descriptor.key as 'l' | 'c' | 'h' | 'a')}
               onChange={(v) =>
@@ -319,7 +351,8 @@ export default function Inspector() {
                 scope="stroke"
                 descriptor={descriptor}
                 value={layer.style.stroke!.colour[descriptor.key as 'l' | 'c' | 'h' | 'a']}
-                count={count}
+                count={innerCopies}
+                layerCount={layerCount}
                 truncated={truncated}
                 toColour={swatchFor(layer.style.stroke!.colour)(descriptor.key as 'l' | 'c' | 'h' | 'a')}
                 onChange={(v) =>
@@ -337,7 +370,8 @@ export default function Inspector() {
                 scope="stroke"
                 descriptor={descriptor}
                 value={layer.style.stroke!.width}
-                count={count}
+                count={innerCopies}
+                layerCount={layerCount}
                 truncated={truncated}
                 onChange={(v) => apply((d) => setStrokeWidth(d, layer.id, v), 'stroke-width')}
                 onCommit={endCoalesce}

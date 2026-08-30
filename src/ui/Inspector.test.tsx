@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { render, screen, fireEvent, within } from '@testing-library/react'
 import { describe, it, expect, beforeEach } from 'vitest'
-import Inspector, { chainCountLabel, truncatedThrough } from './Inspector'
+import Inspector, { chainCountLabel, levelCopies, truncatedThrough } from './Inspector'
 import { useStore } from '../state/store'
 import { emptyDocument, defaultLayer, DEFAULT_FILL, DEFAULT_STROKE } from '../document/defaults'
 import { emptyHistory } from '../state/history'
@@ -660,6 +660,90 @@ describe('Inspector', () => {
       expect(screen.getByTestId('repeater-count-1').textContent).toBe('12 × 9 = 108')
     })
 
+    /**
+     * [radial(12), grid(3x3)] -- 108 instances, nothing truncated. Every
+     * preview below is normalised against a count this chain makes ambiguous.
+     */
+    function chainWithRamps() {
+      const doc = useStore.getState().doc
+      useStore.setState({
+        doc: {
+          ...doc,
+          layers: [
+            {
+              ...doc.layers[0],
+              repeaters: [
+                {
+                  type: 'radial', count: 12, radius: 180, startAngle: 0,
+                  spin: { base: 0, to: 90, source: 'index', curve: 'linear' },
+                },
+                {
+                  type: 'grid', rows: 3, cols: 3, spacingX: 20, spacingY: 20,
+                  spin: { base: 0, to: 90, source: 'index', curve: 'linear' },
+                },
+              ],
+              style: {
+                fill: {
+                  l: 0.6, c: 0.2, a: 1,
+                  h: { base: 0, to: 240, source: 'index', curve: 'linear' },
+                },
+              },
+            },
+          ],
+        },
+      })
+    }
+
+    const cellsOf = (label: string) =>
+      within(screen.getByLabelText(label)).getAllByTestId('ramp-cell')
+
+    it('previews a colour ramp over the innermost link, not the layer total', () => {
+      // Fill resolves against the instance context, whose innermost level is
+      // the grid: the engine emits 0, 30 .. 240 and restarts every 9 copies.
+      // Normalised against the layer's 108 the strip promised one smooth
+      // 24-cell sweep instead -- silently, with nothing truncated to warn on.
+      chainWithRamps()
+      render(<Inspector />)
+      const hues = cellsOf('fill hue preview')
+        .map((c) => Number(c.getAttribute('data-colour')!.split(' ')[2]))
+      expect(hues).toEqual([0, 30, 60, 90, 120, 150, 180, 210, 240])
+    })
+
+    it('previews each link’s own spin over that link’s copies', () => {
+      // The radial's spin sweeps its 12 copies and the grid's sweeps its 9.
+      // Neither sweeps the layer's 108, which is what both strips showed.
+      chainWithRamps()
+      render(<Inspector />)
+      expect(cellsOf('repeat 1 spin preview')).toHaveLength(12)
+      expect(cellsOf('repeat 2 spin preview')).toHaveLength(9)
+    })
+
+    it('previews a flatIndex ramp over the layer total, which is its denominator', () => {
+      // The one source that genuinely runs across every instance: 108 copies,
+      // sampled down to the strip's 24 cells. Answering the finding with the
+      // innermost count everywhere would make this 9 and be just as wrong.
+      chainWithRamps()
+      const doc = useStore.getState().doc
+      useStore.setState({
+        doc: {
+          ...doc,
+          layers: [
+            {
+              ...doc.layers[0],
+              style: {
+                fill: {
+                  ...doc.layers[0].style.fill!,
+                  l: { base: 0, to: 1, source: 'flatIndex', curve: 'linear' },
+                },
+              },
+            },
+          ],
+        },
+      })
+      render(<Inspector />)
+      expect(cellsOf('fill lightness preview')).toHaveLength(24)
+    })
+
     it('shows a bare count for a link the budget cut short, product or no product', () => {
       // Every number here is one the UI can actually produce: maxInstances is
       // 100_000, radial count maxes at 200 and grid rows/cols at 40. The grid
@@ -725,6 +809,35 @@ describe('chainCountLabel', () => {
     // them either: "100000 × 1 = 100000" claims each parent contributed one
     // copy, when most contributed none.
     expect(chainCountLabel(100_000, 100_000, 2, true)).toBe('100000')
+  })
+})
+
+describe('levelCopies', () => {
+  it('gives the first link its own count', () => {
+    expect(levelCopies([12, 108], [false, false], 0, 108)).toBe(12)
+  })
+
+  it('gives a later link its contribution per parent copy', () => {
+    // 108 cumulative over 12 parents is 9 copies each -- the ramp a field on
+    // that link actually sweeps.
+    expect(levelCopies([12, 108], [false, false], 1, 108)).toBe(9)
+  })
+
+  it('falls back to the layer total where the level was cut short', () => {
+    // 100000 / 200 is exactly 500, and 500 is a fiction: the grid has 1600
+    // cells and most rings got none. No contribution can be recovered from a
+    // truncated level, so hand back the layer total the caveat already covers
+    // rather than inventing one.
+    expect(levelCopies([200, 100_000], [false, true], 1, 100_000)).toBe(100_000)
+  })
+
+  it('falls back for a link below a truncated one', () => {
+    expect(levelCopies([200, 100_000, 100_000], [false, true, false], 2, 100_000)).toBe(100_000)
+  })
+
+  it('falls back when there is no such level', () => {
+    // A layer with no repeaters: one instance, no levels to divide.
+    expect(levelCopies([], [], -1, 1)).toBe(1)
   })
 })
 

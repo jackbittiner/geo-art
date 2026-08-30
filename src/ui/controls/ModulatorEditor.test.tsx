@@ -26,6 +26,7 @@ function setup(over: Partial<EditorProps> = {}) {
       descriptor={hue}
       field={field()}
       count={12}
+      layerCount={12}
       onChange={onChange}
       onCommit={onCommit}
       {...over}
@@ -225,6 +226,22 @@ describe('ModulatorEditor', () => {
     for (const cell of screen.getAllByTestId('ramp-cell')) {
       expect(cell.getAttribute('data-colour')).toBeNull()
     }
+  })
+
+  // Which count the strip normalises against depends on the ramp's source,
+  // and the two only coincided while a layer had a single repeater. Under a
+  // chain, an `index` ramp restarts at every parent copy while a `flatIndex`
+  // ramp runs once across the layer -- so a component handed both counts has
+  // to choose, and choosing wrong is silent.
+  it('spreads an index ramp over the level it resolves at, not the layer', () => {
+    setup({ count: 3, layerCount: 12, toColour: (v: number) => `h${v}` })
+    const cells = screen.getAllByTestId('ramp-cell')
+    expect(cells.map((c) => c.getAttribute('data-colour'))).toEqual(['h280', 'h340', 'h400'])
+  })
+
+  it('spreads a flatIndex ramp over the whole layer', () => {
+    setup({ field: field({ source: 'flatIndex' }), count: 3, layerCount: 12 })
+    expect(screen.getAllByTestId('ramp-cell')).toHaveLength(12)
   })
 
   // The preview normalises against the copy count it is handed, but the ramp
