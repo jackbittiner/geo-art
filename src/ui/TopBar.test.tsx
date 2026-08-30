@@ -151,6 +151,32 @@ describe('TopBar', () => {
     expect(useStore.getState().doc.canvas.width).toBe(1200)
   })
 
+  // Lines 43-44 of TopBar are adjacent near-identical selectors (`past` vs
+  // `future`) and lines 109/117 adjacent near-identical handlers, so a
+  // copy-paste is the likeliest defect here. Nothing caught either: no test
+  // had ever put the store in a redo-able state while a TopBar was rendered,
+  // so `canRedo` hardcoded to false (a permanently dead button) and
+  // onClick={redo} swapped for onClick={undo} both left the suite green.
+  // Hence all three assertions: enabled, clickable, and lands on the redone
+  // value by name.
+  it('redoes from the button', () => {
+    render(<TopBar />)
+    // act() for the same reason as the undo test above: React 19 batches the
+    // store mutation onto a microtask, leaving `disabled` stale otherwise.
+    act(() => {
+      useStore.getState().apply((d) => setCanvasSize(d, 800, 600))
+    })
+    act(() => {
+      useStore.getState().undo()
+    })
+    expect(useStore.getState().doc.canvas.width).toBe(1200)
+
+    expect(screen.getByRole('button', { name: 'Redo' })).toHaveProperty('disabled', false)
+    fireEvent.click(screen.getByRole('button', { name: 'Redo' }))
+
+    expect(useStore.getState().doc.canvas.width).toBe(800)
+  })
+
   it('types a canvas size as one undo step, not one per keystroke', () => {
     render(<TopBar />)
     const input = screen.getByLabelText('Canvas width')
