@@ -106,4 +106,38 @@ describe('undo and redo', () => {
     const second = undo(first.history, first.doc)!
     expect(second.doc.seed).toBe(1)
   })
+
+  // Both stacks are newest-last, and nothing beyond depth 1 said so: with a
+  // single entry `[...xs, e]` and `[e, ...xs]` are the same array, so three
+  // separate mutations turning `future` into a queue -- pushing to its front
+  // in undo, pushing to `past`'s front in redo, and reading `future[0]`
+  // instead of the top -- all left the suite green. The last is a live bug
+  // shape: after two undos `future` is [C, B], correct redo takes B then C,
+  // and a queue takes C and then walks backwards. So this asserts the whole
+  // sequence at every step, in both directions.
+  it('walks forward through several entries in the exact reverse of the way back', () => {
+    let h = record(emptyHistory(), A, null, 0)
+    h = record(h, B, null, 1000)
+
+    const back1 = undo(h, C)!
+    expect(back1.doc.seed).toBe(2)
+    expect(back1.history.past.map((e) => e.doc.seed)).toEqual([1])
+    expect(back1.history.future.map((e) => e.doc.seed)).toEqual([3])
+
+    const back2 = undo(back1.history, back1.doc)!
+    expect(back2.doc.seed).toBe(1)
+    expect(back2.history.past).toEqual([])
+    // Newest-last: C was banked first, B second.
+    expect(back2.history.future.map((e) => e.doc.seed)).toEqual([3, 2])
+
+    const forward1 = redo(back2.history, back2.doc)!
+    expect(forward1.doc.seed).toBe(2)
+    expect(forward1.history.past.map((e) => e.doc.seed)).toEqual([1])
+    expect(forward1.history.future.map((e) => e.doc.seed)).toEqual([3])
+
+    const forward2 = redo(forward1.history, forward1.doc)!
+    expect(forward2.doc.seed).toBe(3)
+    expect(forward2.history.past.map((e) => e.doc.seed)).toEqual([1, 2])
+    expect(forward2.history.future).toEqual([])
+  })
 })
