@@ -13,6 +13,8 @@ type Props = {
   field: Modulated
   /** Copies the layer actually has, so the preview and cycles read truthfully. */
   count: number
+  /** The evaluation hit the instance budget, so the preview may overstate. */
+  truncated?: boolean
   toColour?: (value: number) => string
   onChange: (value: Field) => void
 }
@@ -24,7 +26,7 @@ const ROW = 'flex items-center gap-2 py-0.5 text-[11px]'
 const KEY = 'w-10 shrink-0 text-neutral-500'
 
 export default function ModulatorEditor({
-  idPrefix, accessibleName, descriptor, field, count, toColour, onChange,
+  idPrefix, accessibleName, descriptor, field, count, truncated, toColour, onChange,
 }: Props) {
   // A wrapping field can target a full turn in either direction; 400° is a
   // legal hue even though max is 360, because colourToCss wraps at render.
@@ -126,6 +128,30 @@ export default function ModulatorEditor({
           constant
         </button>
       </div>
+
+      {/*
+        `count` is the *emitted* count; `resolve` normalises against the
+        *intended* count the repeater recorded in ctx.counts. Under truncation
+        the two diverge and the preview overstates the sweep -- at
+        maxInstances 6 with count 12 and hue 0 -> 240 the engine produces
+        [0, 21.8, ... 109.1] while the preview promises [0, 48, ... 240].
+        The honest fix is an `intendedCounts` alongside `perLayerCounts`,
+        which belongs to a later piece; until then, say so.
+
+        useEvaluation's `truncated` is document-wide rather than per-layer, so
+        this over-warns on an untruncated layer in a truncated document. That
+        is the acceptable side to err on; silence is not. The divergence
+        itself is pinned in modulation.test.ts.
+
+        Its own line, not beside the strip: the note is ~180px at 10px and the
+        row has ~279px, so inline it would squeeze the preview back down to a
+        sliver -- undoing the C1 fix directly above it.
+      */}
+      {truncated && (
+        <div data-testid="ramp-truncated" className="pb-0.5 text-[10px] text-amber-500/80">
+          truncated — preview shows the full ramp
+        </div>
+      )}
     </div>
   )
 }

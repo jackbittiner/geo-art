@@ -256,6 +256,49 @@ describe('Inspector', () => {
     expect(cells[1].getAttribute('data-colour')).toBe('oklch(60% 0.2 240 / 0.5)')
   })
 
+  // The truncation caveat is only useful if it is actually threaded: the
+  // ModulatorEditor unit test cannot tell whether the Inspector ever passes
+  // the flag. Cap the budget below the requested count so the evaluation
+  // really does truncate.
+  it('warns on a modulated field when the evaluation truncated', () => {
+    const doc = useStore.getState().doc
+    useStore.setState({
+      doc: {
+        ...doc,
+        maxInstances: 6,
+        layers: [
+          {
+            ...doc.layers[0],
+            style: {
+              fill: { l: 0.6, c: 0.2, h: { base: 0, to: 240, source: 'index', curve: 'linear' }, a: 1 },
+            },
+          },
+        ],
+      },
+    })
+    render(<Inspector />)
+    expect(screen.getAllByTestId('ramp-truncated').length).toBeGreaterThan(0)
+  })
+
+  it('shows no truncation warning when the whole document fits', () => {
+    const doc = useStore.getState().doc
+    useStore.setState({
+      doc: {
+        ...doc,
+        layers: [
+          {
+            ...doc.layers[0],
+            style: {
+              fill: { l: 0.6, c: 0.2, h: { base: 0, to: 240, source: 'index', curve: 'linear' }, a: 1 },
+            },
+          },
+        ],
+      },
+    })
+    render(<Inspector />)
+    expect(screen.queryByTestId('ramp-truncated')).toBeNull()
+  })
+
   it('offers no modulate toggle on the repeater fields that cannot vary', () => {
     render(<Inspector />)
     expect(screen.queryByRole('button', { name: 'repeat 1 count modulate' })).toBeNull()

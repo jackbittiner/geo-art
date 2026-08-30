@@ -27,6 +27,11 @@ export default function Inspector() {
   }
 
   const count = result.perLayerCounts[layer.id] ?? 0
+  // Threaded down beside `count` rather than reached for from the editor:
+  // `count` is the *emitted* copy count and a modulated field normalises
+  // against the *intended* one, so under truncation the preview overstates.
+  // The flag is document-wide, which over-warns; see ModulatorEditor.
+  const truncated = result.truncated
   const shapeRecord = layer.shape as unknown as Record<string, Field>
 
   // A swatch needs all four channels, but a channel's ramp only supplies its
@@ -66,6 +71,7 @@ export default function Inspector() {
             descriptor={descriptor}
             value={shapeRecord[descriptor.key]}
             count={count}
+            truncated={truncated}
             onChange={(v) => apply((d) => setShapeField(d, layer.id, descriptor.key, v))}
           />
         ))}
@@ -89,6 +95,7 @@ export default function Inspector() {
                 descriptor={descriptor}
                 value={record[descriptor.key]}
                 count={count}
+                truncated={truncated}
                 onChange={(v) => apply((d) => setRepeaterField(d, layer.id, index, descriptor.key, v))}
               />
             ))}
@@ -111,6 +118,7 @@ export default function Inspector() {
               descriptor={descriptor}
               value={layer.style.fill![descriptor.key as 'l' | 'c' | 'h' | 'a']}
               count={count}
+              truncated={truncated}
               toColour={fillSwatch(descriptor.key as 'l' | 'c' | 'h' | 'a')}
               onChange={(v) =>
                 apply((d) => setFillChannel(d, layer.id, descriptor.key as 'l' | 'c' | 'h' | 'a', v))

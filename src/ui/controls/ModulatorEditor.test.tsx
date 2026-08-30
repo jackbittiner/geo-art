@@ -166,6 +166,21 @@ describe('ModulatorEditor', () => {
     expect(screen.getAllByTestId('ramp-cell')).toHaveLength(5)
   })
 
+  // The preview normalises against the copy count it is handed, but the ramp
+  // itself normalises against the count the repeater *intended*. Truncation
+  // splits the two, and the preview then promises a sweep the canvas never
+  // shows. Until the engine surfaces the intended count, say so.
+  it('warns that the preview overstates the ramp when the layer is truncated', () => {
+    setup({ truncated: true })
+    expect(screen.getByTestId('ramp-truncated').textContent)
+      .toContain('preview shows the full ramp')
+  })
+
+  it('stays quiet when nothing was truncated', () => {
+    setup()
+    expect(screen.queryByTestId('ramp-truncated')).toBeNull()
+  })
+
   // RampPreview's cells are empty `flex-1` divs, so its own max-content width
   // is just the gaps -- 23px for 24 cells. It stayed that narrow because the
   // `constant` button's `ml-auto` claimed the rest of the row. The width has

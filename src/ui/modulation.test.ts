@@ -131,4 +131,44 @@ describe('previewValues', () => {
     )
     expect(previewValues(hue, total)).toEqual(expected)
   })
+  // KNOWN LIMITATION, pinned deliberately rather than fixed here.
+  //
+  // `previewValues` is handed `perLayerCounts`, the count the engine actually
+  // *emitted*. `resolve` normalises against `ctx.counts`, the count the
+  // repeater *intended* -- radial records the full count on every child even
+  // when the instance budget cut it short. Under truncation the two diverge
+  // and the preview promises a sweep the canvas never draws.
+  //
+  // The real fix is an `intendedCounts` alongside `perLayerCounts` on
+  // EvaluationResult, which the Inspector would pass here instead. That is an
+  // engine change and belongs to a later piece; this branch surfaces the
+  // caveat in the editor instead (see ModulatorEditor's truncation note).
+  //
+  // This test exists to make that divergence loud the day someone tries to
+  // close it: if the preview starts agreeing with the engine under
+  // truncation, this test fails and should simply be deleted.
+  it('overstates the ramp under truncation (known limitation, see intendedCounts)', () => {
+    const hue: Modulated = { base: 0, to: 240, source: 'index', curve: 'linear' }
+    const doc = emptyDocument()
+    doc.maxInstances = 6
+    const layer = defaultLayer('halo')
+    layer.repeaters[0].count = 12
+    layer.style.fill = { l: 0.6, c: 0.2, h: hue, a: 1 }
+    doc.layers.push(layer)
+
+    const result = evaluate(doc)
+    expect(result.truncated).toBe(true)
+
+    // The engine emits 6 copies but still spreads them over the intended 12,
+    // so the ring only reaches 240 * 5/11.
+    const emitted = result.layers[0].instances.map((i) => i.style.fill!.h)
+    expect(emitted).toHaveLength(6)
+    expect(emitted.map((v) => Number(v.toFixed(1))))
+      .toEqual([0, 21.8, 43.6, 65.5, 87.3, 109.1])
+
+    // The preview, handed the emitted count of 6, spreads the whole ramp
+    // across those 6 and promises the full 240.
+    expect(previewValues(hue, result.perLayerCounts[layer.id]))
+      .toEqual([0, 48, 96, 144, 192, 240])
+  })
 })
