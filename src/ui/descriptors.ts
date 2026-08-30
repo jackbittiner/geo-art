@@ -82,10 +82,9 @@ export const REPEATER_FIELDS: Record<RepeaterType, FieldDescriptor[]> = {
       perCopy: true, wraps: true, rampTo: { kind: 'offset', delta: 360 },
     },
   ],
-  // Minimal descriptors to keep REPEATER_FIELDS (and the build) covering the
-  // grid variant landed by Task 1. Rows/cols/spacing follow radial's own
-  // count/radius conventions; Task 4 owns the actual grid Inspector UI and
-  // may retune these bounds.
+  // The grid card's field bounds. Rows/cols/spacing follow radial's own
+  // count/radius conventions, and like radial's count they resolve against the
+  // parent context: no perCopy, no toggle.
   grid: [
     { key: 'rows', label: 'rows', min: 1, max: 40, step: 1 },
     { key: 'cols', label: 'cols', min: 1, max: 40, step: 1 },
