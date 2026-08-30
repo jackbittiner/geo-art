@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, within } from '@testing-library/react'
 import { describe, it, expect, beforeEach } from 'vitest'
 import Inspector from './Inspector'
 import { useStore } from '../state/store'
@@ -93,7 +93,7 @@ describe('Inspector', () => {
     expect(countInput.value).toBe('12')
   })
 
-  it('renders a modulated field as a read-only chip', () => {
+  it('renders the editor for a modulated field, not a read-only chip', () => {
     const doc = useStore.getState().doc
     useStore.setState({
       doc: {
@@ -109,8 +109,10 @@ describe('Inspector', () => {
       },
     })
     render(<Inspector />)
-    expect(screen.getByTestId('modulated-repeat 1-spin')).toBeDefined()
-    expect(screen.queryByLabelText('repeat 1 spin')).toBeNull()
+    expect(screen.getByLabelText('repeat 1 spin to')).toBeDefined()
+    expect(screen.getByLabelText('repeat 1 spin curve')).toBeDefined()
+    // The first-line slider now edits base rather than disappearing.
+    expect(screen.getByLabelText('repeat 1 spin')).toBeDefined()
   })
 
   it('omits the style card for a layer with no fill', () => {
@@ -164,8 +166,8 @@ describe('Inspector', () => {
     fireEvent.click(screen.getByLabelText('repeat 1 spin make constant'))
 
     expect(useStore.getState().doc.layers[0].repeaters[0]).toMatchObject({ spin: 15 })
-    // And the chip is replaced by an editable slider.
-    expect(screen.queryByTestId('modulated-repeat 1-spin')).toBeNull()
+    // And the editor is replaced by a plain, editable slider.
+    expect(screen.queryByLabelText('repeat 1 spin to')).toBeNull()
     expect((screen.getByLabelText('repeat 1 spin') as HTMLInputElement).value).toBe('15')
   })
   // Both halves of a slider that was narrower than the data it edits: the
@@ -208,5 +210,144 @@ describe('Inspector', () => {
 
     // And rendering alone wrote nothing: the document is the same object.
     expect(useStore.getState().doc).toBe(before)
+  })
+
+  it('previews a colour ramp against the layer real copy count', () => {
+    const doc = useStore.getState().doc
+    useStore.setState({
+      doc: {
+        ...doc,
+        layers: [
+          {
+            ...doc.layers[0],
+            repeaters: [{ ...doc.layers[0].repeaters[0], count: 5 }],
+            style: {
+              fill: { l: 0.6, c: 0.2, h: { base: 0, to: 240, source: 'index', curve: 'linear' }, a: 1 },
+            },
+          },
+        ],
+      },
+    })
+    render(<Inspector />)
+    expect(screen.getAllByTestId('ramp-cell')).toHaveLength(5)
+  })
+
+  it('builds hue swatches from the layer other channels', () => {
+    const doc = useStore.getState().doc
+    useStore.setState({
+      doc: {
+        ...doc,
+        layers: [
+          {
+            ...doc.layers[0],
+            repeaters: [{ ...doc.layers[0].repeaters[0], count: 2 }],
+            style: {
+              fill: { l: 0.6, c: 0.2, h: { base: 0, to: 240, source: 'index', curve: 'linear' }, a: 0.5 },
+            },
+          },
+        ],
+      },
+    })
+    render(<Inspector />)
+    const cells = screen.getAllByTestId('ramp-cell')
+    // Lightness, chroma and alpha come from the layer; only hue varies.
+    // Read data-colour rather than style: jsdom rewrites 60% as 0.6.
+    expect(cells[0].getAttribute('data-colour')).toBe('oklch(60% 0.2 0 / 0.5)')
+    expect(cells[1].getAttribute('data-colour')).toBe('oklch(60% 0.2 240 / 0.5)')
+  })
+
+  // The truncation caveat is only useful if it is actually threaded: the
+  // ModulatorEditor unit test cannot tell whether the Inspector ever passes
+  // the flag. Cap the budget below the requested count so the evaluation
+  // really does truncate.
+  it('warns on a modulated field when the evaluation truncated', () => {
+    const doc = useStore.getState().doc
+    useStore.setState({
+      doc: {
+        ...doc,
+        maxInstances: 6,
+        layers: [
+          {
+            ...doc.layers[0],
+            style: {
+              fill: { l: 0.6, c: 0.2, h: { base: 0, to: 240, source: 'index', curve: 'linear' }, a: 1 },
+            },
+          },
+        ],
+      },
+    })
+    render(<Inspector />)
+    expect(screen.getAllByTestId('ramp-truncated').length).toBeGreaterThan(0)
+  })
+
+  it('shows no truncation warning when the whole document fits', () => {
+    const doc = useStore.getState().doc
+    useStore.setState({
+      doc: {
+        ...doc,
+        layers: [
+          {
+            ...doc.layers[0],
+            style: {
+              fill: { l: 0.6, c: 0.2, h: { base: 0, to: 240, source: 'index', curve: 'linear' }, a: 1 },
+            },
+          },
+        ],
+      },
+    })
+    render(<Inspector />)
+    expect(screen.queryByTestId('ramp-truncated')).toBeNull()
+  })
+
+  // The swatch fixtures above give every sibling channel as a plain number, so
+  // `channelBase`'s modulated branch never ran: reading `.to` instead of
+  // `.base` was invisible. Two modulated channels at once, with bases and ramp
+  // targets far apart, so each swatch names which one it used.
+  it('builds a swatch from a sibling channel base, not from its ramp target', () => {
+    const doc = useStore.getState().doc
+    useStore.setState({
+      doc: {
+        ...doc,
+        layers: [
+          {
+            ...doc.layers[0],
+            repeaters: [{ ...doc.layers[0].repeaters[0], count: 2 }],
+            style: {
+              fill: {
+                l: { base: 0.6, to: 0, source: 'index', curve: 'linear' },
+                c: 0.2,
+                h: { base: 0, to: 240, source: 'index', curve: 'linear' },
+                a: 1,
+              },
+            },
+          },
+        ],
+      },
+    })
+    render(<Inspector />)
+
+    // The hue strip varies hue and must hold lightness at its *base* of 0.6
+    // (60%), not at its ramp target of 0 (0%).
+    const hueCells = within(screen.getByTestId('field-fill-h')).getAllByTestId('ramp-cell')
+    expect(hueCells.map((c) => c.getAttribute('data-colour'))).toEqual([
+      'oklch(60% 0.2 0 / 1)',
+      'oklch(60% 0.2 240 / 1)',
+    ])
+
+    // And symmetrically: the lightness strip holds hue at its base of 0, not
+    // at its ramp target of 240.
+    const lightnessCells = within(screen.getByTestId('field-fill-l')).getAllByTestId('ramp-cell')
+    expect(lightnessCells.map((c) => c.getAttribute('data-colour'))).toEqual([
+      'oklch(60% 0.2 0 / 1)',
+      'oklch(0% 0.2 0 / 1)',
+    ])
+  })
+
+  it('offers no modulate toggle on the repeater fields that cannot vary', () => {
+    render(<Inspector />)
+    expect(screen.queryByRole('button', { name: 'repeat 1 count modulate' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'repeat 1 radius modulate' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'repeat 1 start modulate' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'repeat 1 spin modulate' })).toBeDefined()
   })
 })

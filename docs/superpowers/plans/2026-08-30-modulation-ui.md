@@ -504,7 +504,23 @@ Break the sampling so cells are renumbered rather than resolved at their true in
 ```
 
 Run: `npm test -- src/ui/modulation.test.ts`
-Expected: FAIL on the cycles test and on the anti-drift test. Capture the output, restore, re-run to green.
+
+**Corrected during execution — the original prediction here was wrong.** This
+mutation does *not* fail the cycles test or the count-12 anti-drift test, and
+cannot:
+
+- With `count <= PREVIEW_CELLS`, `cells === total`, so `i === k` and
+  `total === cells` already. The renumbering is a byte-for-byte no-op, which
+  makes the 12-copy anti-drift test structurally incapable of observing it.
+- At 240 copies the two index sequences do differ, but the cycles test counts
+  *downward wraps*, and that metric is invariant under this mutation — both
+  sequences wrap twice.
+
+The mutation is only observable where sampling actually happens and the
+comparison is against real values rather than a derived metric. The test that
+catches it drives 200 copies through `evaluate()` and compares the full
+24-element array against `previewValues`. Expect that test to FAIL. Capture the
+output, restore, re-run to green.
 
 - [ ] **Step 6: Commit**
 
@@ -546,9 +562,11 @@ describe('RampPreview', () => {
     const toColour = (v: number) => `oklch(60% 0.2 ${v} / 1)`
     render(<RampPreview values={[0, 180]} label="fill hue preview" toColour={toColour} />)
     const cells = screen.getAllByTestId('ramp-cell')
-    expect(cells[0].style.backgroundColor || cells[0].style.background).toContain('oklch')
-    expect(cells[0].getAttribute('style')).toContain('0 / 1')
-    expect(cells[1].getAttribute('style')).toContain('180 / 1')
+    // Assert the mapper's own output via data-colour, not the style
+    // attribute: jsdom re-serialises oklch() and rewrites 60% as 0.6.
+    expect(cells[0].getAttribute('data-colour')).toBe('oklch(60% 0.2 0 / 1)')
+    expect(cells[1].getAttribute('data-colour')).toBe('oklch(60% 0.2 180 / 1)')
+    expect(cells[0].getAttribute('style')).toContain('oklch')
   })
 
   it('scales bar heights across the values own range', () => {
@@ -619,6 +637,8 @@ export default function RampPreview({ values, label, toColour }: Props) {
         <div
           key={i}
           data-testid="ramp-cell"
+          // The raw mapper output, because jsdom rewrites oklch() in `style`.
+          data-colour={toColour ? toColour(value) : undefined}
           className={toColour ? 'h-full flex-1' : 'flex-1 bg-sky-500'}
           style={
             toColour
@@ -639,14 +659,22 @@ Run: `npm test -- src/ui/controls/RampPreview.test.tsx` → PASS (6 tests).
 
 - [ ] **Step 5: Mutation-verify (required by spec §10)**
 
-Break the gradient mapper so it ignores the varying channel:
+Break the gradient mapper so it ignores the varying channel. **Both** places
+the mapper is called must be broken — the `style` line paints the cell, but the
+assertions read `data-colour`, so mutating only the style fails nothing:
 
-```ts
+```tsx
+          data-colour={toColour ? toColour(values[0]) : undefined}
+          ...
               ? { background: toColour(values[0]) }
 ```
 
+(This recipe originally named only the `style` line. That was an oversight when
+the assertions were moved to `data-colour` to sidestep jsdom's rewriting of
+`oklch()` — the two changes have to move together.)
+
 Run: `npm test -- src/ui/controls/RampPreview.test.tsx`
-Expected: FAIL on `renders swatches when given a colour mapper` — the second cell would read `0 / 1` instead of `180 / 1`. Capture the output, restore, re-run to green.
+Expected: FAIL on `renders swatches when given a colour mapper` — the second cell's `data-colour` would read `oklch(60% 0.2 0 / 1)` instead of `oklch(60% 0.2 180 / 1)`. Capture the output, restore, re-run to green.
 
 - [ ] **Step 6: Commit**
 
@@ -1223,10 +1251,9 @@ Append to `src/ui/Inspector.test.tsx`:
     render(<Inspector />)
     const cells = screen.getAllByTestId('ramp-cell')
     // Lightness, chroma and alpha come from the layer; only hue varies.
-    expect(cells[0].getAttribute('style')).toContain('60%')
-    expect(cells[0].getAttribute('style')).toContain('0.2')
-    expect(cells[0].getAttribute('style')).toContain('0.5')
-    expect(cells[1].getAttribute('style')).toContain('240')
+    // Read data-colour rather than style: jsdom rewrites 60% as 0.6.
+    expect(cells[0].getAttribute('data-colour')).toBe('oklch(60% 0.2 0 / 0.5)')
+    expect(cells[1].getAttribute('data-colour')).toBe('oklch(60% 0.2 240 / 0.5)')
   })
 
   it('offers no modulate toggle on the repeater fields that cannot vary', () => {
