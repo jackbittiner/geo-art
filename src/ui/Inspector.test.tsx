@@ -6,6 +6,10 @@ import { useStore } from '../state/store'
 import { emptyDocument, defaultLayer, DEFAULT_FILL, DEFAULT_STROKE } from '../document/defaults'
 import { emptyHistory } from '../state/history'
 import { isModulated, type Modulated } from '../geometry/field'
+// Every fixture below is seeded through defaultLayer/seed(), which always
+// starts with a radial repeater, so this narrowing is honest rather than a
+// cast papering over doubt about the union.
+import type { RadialConfig } from '../geometry/repeaters'
 
 function seed() {
   const doc = emptyDocument()
@@ -302,7 +306,7 @@ describe('Inspector', () => {
         layers: [
           {
             ...doc.layers[0],
-            repeaters: [{ ...doc.layers[0].repeaters[0], count: 2 }],
+            repeaters: [{ ...(doc.layers[0].repeaters[0] as RadialConfig), count: 2 }],
             style: {
               fill: { l: 0.9, c: 0.45, h: 10, a: 1 },
               stroke: {
@@ -414,7 +418,7 @@ describe('Inspector', () => {
         layers: [
           {
             ...doc.layers[0],
-            repeaters: [{ ...doc.layers[0].repeaters[0], count: 5 }],
+            repeaters: [{ ...(doc.layers[0].repeaters[0] as RadialConfig), count: 5 }],
             style: {
               fill: { l: 0.6, c: 0.2, h: { base: 0, to: 240, source: 'index', curve: 'linear' }, a: 1 },
             },
@@ -434,7 +438,7 @@ describe('Inspector', () => {
         layers: [
           {
             ...doc.layers[0],
-            repeaters: [{ ...doc.layers[0].repeaters[0], count: 2 }],
+            repeaters: [{ ...(doc.layers[0].repeaters[0] as RadialConfig), count: 2 }],
             style: {
               fill: { l: 0.6, c: 0.2, h: { base: 0, to: 240, source: 'index', curve: 'linear' }, a: 0.5 },
             },
@@ -505,7 +509,7 @@ describe('Inspector', () => {
         layers: [
           {
             ...doc.layers[0],
-            repeaters: [{ ...doc.layers[0].repeaters[0], count: 2 }],
+            repeaters: [{ ...(doc.layers[0].repeaters[0] as RadialConfig), count: 2 }],
             style: {
               fill: {
                 l: { base: 0.6, to: 0, source: 'index', curve: 'linear' },

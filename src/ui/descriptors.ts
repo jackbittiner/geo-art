@@ -77,6 +77,20 @@ export const REPEATER_FIELDS: Record<RepeaterType, FieldDescriptor[]> = {
       perCopy: true, wraps: true, rampTo: { kind: 'offset', delta: 360 },
     },
   ],
+  // Minimal descriptors to keep REPEATER_FIELDS (and the build) covering the
+  // grid variant landed by Task 1. Rows/cols/spacing follow radial's own
+  // count/radius conventions; Task 4 owns the actual grid Inspector UI and
+  // may retune these bounds.
+  grid: [
+    { key: 'rows', label: 'rows', min: 1, max: 40, step: 1 },
+    { key: 'cols', label: 'cols', min: 1, max: 40, step: 1 },
+    { key: 'spacingX', label: 'spacing x', min: 0, max: 400, unit: 'px' },
+    { key: 'spacingY', label: 'spacing y', min: 0, max: 400, unit: 'px' },
+    {
+      key: 'spin', label: 'spin', min: -360, max: 360, unit: '°',
+      perCopy: true, wraps: true, rampTo: { kind: 'offset', delta: 360 },
+    },
+  ],
 }
 
 export const STROKE_FIELDS: FieldDescriptor[] = [

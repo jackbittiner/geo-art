@@ -2,6 +2,9 @@ import { describe, it, expect } from 'vitest'
 import { buildScene } from './scene'
 import { evaluate } from '../geometry/evaluate'
 import { emptyDocument, defaultLayer } from '../document/defaults'
+// Both fixtures below are built by defaultLayer, which always seeds a radial
+// repeater, so narrowing here is honest rather than a cast papering over doubt.
+import type { RadialConfig } from '../geometry/repeaters'
 
 describe('buildScene', () => {
   it('carries canvas size and background through', () => {
@@ -15,8 +18,8 @@ describe('buildScene', () => {
   it('keeps layers separate and in painter order', () => {
     const doc = emptyDocument()
     doc.layers.push(defaultLayer('bottom'), defaultLayer('top'))
-    doc.layers[0].repeaters[0].count = 3
-    doc.layers[1].repeaters[0].count = 5
+    ;(doc.layers[0].repeaters[0] as RadialConfig).count = 3
+    ;(doc.layers[1].repeaters[0] as RadialConfig).count = 5
     const scene = buildScene(doc, evaluate(doc))
     expect(scene.layers.map((l) => l.instances.length)).toEqual([3, 5])
   })

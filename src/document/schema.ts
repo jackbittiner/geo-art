@@ -100,6 +100,14 @@ const repeaterSchema = z.discriminatedUnion('type', [
     startAngle: fieldSchema,
     spin: fieldSchema,
   }),
+  z.object({
+    type: z.literal('grid'),
+    rows: fieldSchema,
+    cols: fieldSchema,
+    spacingX: fieldSchema,
+    spacingY: fieldSchema,
+    spin: fieldSchema,
+  }),
 ])
 
 const styleSchema = z.object({

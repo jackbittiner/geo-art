@@ -3,6 +3,9 @@ import { evaluate } from './evaluate'
 import { applyPoint } from './transform'
 import { emptyDocument, defaultLayer } from '../document/defaults'
 import type { Document } from '../document/schema'
+// Fixtures here are always built as radial by defaultLayer/docWith, so this
+// narrowing is honest, not a cast papering over doubt about the union.
+import type { RadialConfig } from './repeaters'
 
 function docWith(...mutate: ((d: Document) => void)[]): Document {
   const doc = emptyDocument()
@@ -19,7 +22,7 @@ describe('evaluate', () => {
   })
 
   it('produces one instance per repeater copy', () => {
-    const result = evaluate(docWith((d) => { d.layers[0].repeaters[0].count = 12 }))
+    const result = evaluate(docWith((d) => { (d.layers[0].repeaters[0] as RadialConfig).count = 12 }))
     expect(result.totalInstances).toBe(12)
     expect(result.layers[0].instances).toHaveLength(12)
     expect(result.perLayerCounts[result.layers[0].layerId]).toBe(12)
@@ -39,7 +42,7 @@ describe('evaluate', () => {
   })
 
   it('reuses one Path object when the shape is constant', () => {
-    const result = evaluate(docWith((d) => { d.layers[0].repeaters[0].count = 5 }))
+    const result = evaluate(docWith((d) => { (d.layers[0].repeaters[0] as RadialConfig).count = 5 }))
     const paths = result.layers[0].instances.map((i) => i.path)
     expect(new Set(paths).size).toBe(1)
   })
@@ -47,7 +50,7 @@ describe('evaluate', () => {
   it('rebuilds the path per instance when a shape field is modulated', () => {
     const result = evaluate(
       docWith((d) => {
-        d.layers[0].repeaters[0].count = 4
+        ;(d.layers[0].repeaters[0] as RadialConfig).count = 4
         d.layers[0].shape = {
           type: 'polygon',
           sides: { base: 3, to: 8, source: 'index', curve: 'linear' },
@@ -65,7 +68,7 @@ describe('evaluate', () => {
   it('resolves colour channels per instance', () => {
     const result = evaluate(
       docWith((d) => {
-        d.layers[0].repeaters[0].count = 3
+        ;(d.layers[0].repeaters[0] as RadialConfig).count = 3
         d.layers[0].style.fill = {
           l: 0.6,
           c: 0.2,
@@ -93,7 +96,7 @@ describe('evaluate', () => {
     const result = evaluate(
       docWith((d) => {
         d.maxInstances = 10
-        d.layers[0].repeaters[0].count = 50
+        ;(d.layers[0].repeaters[0] as RadialConfig).count = 50
       }),
     )
     expect(result.totalInstances).toBe(10)
@@ -109,7 +112,7 @@ describe('evaluate', () => {
     const result = evaluate(
       docWith((d) => {
         d.maxInstances = 10
-        d.layers[0].repeaters[0].count = 10_000_000
+        ;(d.layers[0].repeaters[0] as RadialConfig).count = 10_000_000
       }),
     )
     expect(result.totalInstances).toBe(10)
@@ -121,7 +124,7 @@ describe('evaluate', () => {
   it('sets flatIndex and total on the context used for styling', () => {
     const result = evaluate(
       docWith((d) => {
-        d.layers[0].repeaters[0].count = 4
+        ;(d.layers[0].repeaters[0] as RadialConfig).count = 4
         d.layers[0].style.fill = {
           l: { base: 0, to: 1, source: 'flatIndex', curve: 'linear' },
           c: 0.1,

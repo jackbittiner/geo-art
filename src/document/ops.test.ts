@@ -1,11 +1,12 @@
 import { describe, it, expect } from 'vitest'
-import { emptyDocument, defaultLayer, DEFAULT_FILL, DEFAULT_STROKE } from './defaults'
+import { emptyDocument, defaultLayer, DEFAULT_FILL, DEFAULT_STROKE, DEFAULT_REPEATERS } from './defaults'
 import { documentSchema } from './schema'
 import {
   addLayer, removeLayer, duplicateLayer, moveLayer, renameLayer,
   setLayerVisible, updateLayer, setShapeType, setCanvasSize,
   setShapeField, setRepeaterField, setFillChannel,
   setFill, setStroke, setStrokeChannel, setStrokeWidth,
+  addRepeater, removeRepeater, moveRepeater, setRepeaterType,
 } from './ops'
 
 const withLayer = () => addLayer(emptyDocument(), 'halo')
@@ -367,5 +368,139 @@ describe('fill and stroke ops', () => {
     expect(fillOnly.layers[0].style.fill).toBeDefined()
     expect(fillOnly.layers[0].style.stroke).toBeUndefined()
     expect(documentSchema.safeParse(fillOnly).success).toBe(true)
+  })
+
+  it('validates a document whose layer uses a grid repeater', () => {
+    // repeaterSchema is a bare zod schema, never checked against
+    // RepeaterConfig by the compiler, so a missing or misspelled grid member
+    // would fail only at load time. This is the only thing that catches it.
+    const base = withLayer()
+    const doc = setRepeaterType(base, base.layers[0].id, 0, 'grid')
+    expect(() => documentSchema.parse(doc)).not.toThrow()
+  })
+
+  it('rejects a grid repeater missing a required field', () => {
+    // Paired with the test above: on its own, that one passes against a
+    // schema whose grid member accepts anything at all.
+    const base = withLayer()
+    const doc = setRepeaterType(base, base.layers[0].id, 0, 'grid')
+    const broken = structuredClone(doc) as unknown as {
+      layers: { repeaters: Record<string, unknown>[] }[]
+    }
+    delete broken.layers[0].repeaters[0].spacingY
+    expect(() => documentSchema.parse(broken)).toThrow()
+  })
+})
+
+describe('updateLayer identity', () => {
+  it('returns the document by reference when the callback changes nothing', () => {
+    // Guards written inside an updateLayer callback must not manufacture a
+    // new document: the store records an undo entry per new document, so a
+    // no-op edit would leave a phantom step that appears to do nothing.
+    const doc = withLayer()
+    const id = doc.layers[0].id
+    expect(setRepeaterField(doc, id, 99, 'count', 5)).toBe(doc)
+  })
+
+  it('returns a new document when the callback does change something', () => {
+    // Paired with the test above: on its own, that one passes against an op
+    // that never changes anything at all.
+    const doc = withLayer()
+    const id = doc.layers[0].id
+    expect(setRepeaterField(doc, id, 0, 'count', 5)).not.toBe(doc)
+  })
+})
+
+describe('addRepeater', () => {
+  it('appends a repeater of the requested type', () => {
+    const doc = withLayer()
+    const next = addRepeater(doc, doc.layers[0].id, 'grid')
+    expect(next.layers[0].repeaters.map((r) => r.type)).toEqual(['radial', 'grid'])
+  })
+
+  it('deep-copies the default so two layers never share a config object', () => {
+    const doc = withLayer()
+    const next = addRepeater(doc, doc.layers[0].id, 'grid')
+    expect(next.layers[0].repeaters[1]).not.toBe(DEFAULT_REPEATERS.grid)
+    expect(next.layers[0].repeaters[1]).toEqual(DEFAULT_REPEATERS.grid)
+  })
+
+  it('returns the document by reference for an unknown layer', () => {
+    const doc = withLayer()
+    expect(addRepeater(doc, 'no-such-layer', 'grid')).toBe(doc)
+  })
+})
+
+describe('removeRepeater', () => {
+  it('removes the repeater at the index', () => {
+    const base = withLayer()
+    const id = base.layers[0].id
+    const two = addRepeater(base, id, 'grid')
+    const next = removeRepeater(two, id, 0)
+    expect(next.layers[0].repeaters.map((r) => r.type)).toEqual(['grid'])
+  })
+
+  it('refuses to empty the chain, returning the document by reference', () => {
+    // A layer with no repeaters renders one instance at the origin — legal,
+    // but it hides the section that would let you add one back.
+    const base = withLayer()
+    expect(removeRepeater(base, base.layers[0].id, 0)).toBe(base)
+  })
+
+  it('returns the document by reference for an out-of-range index', () => {
+    const base = withLayer()
+    const id = base.layers[0].id
+    const two = addRepeater(base, id, 'grid')
+    expect(removeRepeater(two, id, 7)).toBe(two)
+  })
+})
+
+describe('moveRepeater', () => {
+  it('moves a repeater earlier in the chain', () => {
+    const base = withLayer()
+    const id = base.layers[0].id
+    const two = addRepeater(base, id, 'grid')
+    const next = moveRepeater(two, id, 1, -1)
+    expect(next.layers[0].repeaters.map((r) => r.type)).toEqual(['grid', 'radial'])
+  })
+
+  it('moves a repeater later in the chain', () => {
+    const base = withLayer()
+    const id = base.layers[0].id
+    const two = addRepeater(base, id, 'grid')
+    const next = moveRepeater(two, id, 0, 1)
+    expect(next.layers[0].repeaters.map((r) => r.type)).toEqual(['grid', 'radial'])
+  })
+
+  it('returns the document by reference when the move would leave the array', () => {
+    const base = withLayer()
+    const id = base.layers[0].id
+    const two = addRepeater(base, id, 'grid')
+    expect(moveRepeater(two, id, 0, -1)).toBe(two)
+    expect(moveRepeater(two, id, 1, 1)).toBe(two)
+  })
+})
+
+describe('setRepeaterType', () => {
+  it('replaces the config with that type’s defaults', () => {
+    const base = withLayer()
+    const id = base.layers[0].id
+    const next = setRepeaterType(base, id, 0, 'grid')
+    expect(next.layers[0].repeaters[0]).toEqual(DEFAULT_REPEATERS.grid)
+  })
+
+  it('discards the previous tuning rather than carrying fields across', () => {
+    // Consistent with setShapeType, and undo is the recovery path. Carrying
+    // `spin` across while silently dropping `radius` is harder to predict.
+    const base = withLayer()
+    const id = base.layers[0].id
+    const tuned = setRepeaterField(base, id, 0, 'spin', 45)
+    const next = setRepeaterType(tuned, id, 0, 'grid')
+    expect((next.layers[0].repeaters[0] as { spin: number }).spin).toBe(0)
+  })
+
+  it('returns the document by reference when the type is already that', () => {
+    const base = withLayer()
+    expect(setRepeaterType(base, base.layers[0].id, 0, 'radial')).toBe(base)
   })
 })

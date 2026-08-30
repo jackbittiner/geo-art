@@ -1,5 +1,6 @@
-import { defaultLayer, newId } from './defaults'
+import { DEFAULT_REPEATERS, defaultLayer, newId } from './defaults'
 import type { Field } from '../geometry/field'
+import type { RepeaterType } from '../geometry/repeaters'
 import type { Colour, Document, Layer, LayerId, ShapeConfig, ShapeType } from './schema'
 
 const DEFAULT_SHAPES: Record<ShapeType, ShapeConfig> = {
@@ -54,8 +55,13 @@ export function updateLayer(
 ): Document {
   const index = doc.layers.findIndex((l) => l.id === id)
   if (index === -1) return doc
+  const next = fn(doc.layers[index])
+  // A callback that guards and returns its input unchanged must not produce a
+  // new document: `apply` records an undo entry per new document object, so
+  // that would bank a step whose undo visibly does nothing.
+  if (next === doc.layers[index]) return doc
   const layers = [...doc.layers]
-  layers[index] = fn(layers[index])
+  layers[index] = next
   return { ...doc, layers }
 }
 
@@ -97,6 +103,52 @@ export function setRepeaterField(
   return updateLayer(doc, id, (l) => {
     if (index < 0 || index >= l.repeaters.length) return l
     const repeaters = l.repeaters.map((r, i) => (i === index ? { ...r, [key]: value } : r))
+    return { ...l, repeaters }
+  })
+}
+
+export function addRepeater(doc: Document, id: LayerId, type: RepeaterType): Document {
+  return updateLayer(doc, id, (l) => ({
+    ...l,
+    repeaters: [...l.repeaters, structuredClone(DEFAULT_REPEATERS[type])],
+  }))
+}
+
+export function removeRepeater(doc: Document, id: LayerId, index: number): Document {
+  return updateLayer(doc, id, (l) => {
+    // Refusing at one keeps the Repeat section on screen. A layer with no
+    // repeaters renders a single instance at the origin -- legal, but the
+    // only way back would be undo.
+    if (l.repeaters.length <= 1) return l
+    if (index < 0 || index >= l.repeaters.length) return l
+    return { ...l, repeaters: l.repeaters.filter((_, i) => i !== index) }
+  })
+}
+
+export function moveRepeater(doc: Document, id: LayerId, index: number, delta: number): Document {
+  return updateLayer(doc, id, (l) => {
+    const to = index + delta
+    if (index < 0 || index >= l.repeaters.length) return l
+    if (to < 0 || to >= l.repeaters.length) return l
+    const repeaters = [...l.repeaters]
+    const [moved] = repeaters.splice(index, 1)
+    repeaters.splice(to, 0, moved)
+    return { ...l, repeaters }
+  })
+}
+
+export function setRepeaterType(
+  doc: Document,
+  id: LayerId,
+  index: number,
+  type: RepeaterType,
+): Document {
+  return updateLayer(doc, id, (l) => {
+    if (index < 0 || index >= l.repeaters.length) return l
+    if (l.repeaters[index].type === type) return l
+    const repeaters = l.repeaters.map((r, i) =>
+      i === index ? structuredClone(DEFAULT_REPEATERS[type]) : r,
+    )
     return { ...l, repeaters }
   })
 }
