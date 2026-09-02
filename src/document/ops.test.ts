@@ -108,6 +108,21 @@ describe('document ops', () => {
     expect(doc.layers.map((l) => l.name)).toEqual(['halo', 'second'])
   })
 
+  it('builds the new layer with defaultLayer when no factory is given', () => {
+    const added = addLayer(emptyDocument(), 'halo').layers[0]
+    const fresh = defaultLayer('halo')
+    expect({ ...added, id: '' }).toEqual({ ...fresh, id: '' })
+  })
+
+  it('builds the new layer with the supplied factory', () => {
+    // "Start random" adds a layer through this same path, so the factory has
+    // to reach the appended layer rather than being ignored in favour of
+    // defaultLayer.
+    const marker = { ...defaultLayer('ignored'), name: 'rolled', opacity: 0.5 }
+    const doc = addLayer(emptyDocument(), 'halo', () => marker)
+    expect(doc.layers).toEqual([marker])
+  })
+
   it('removes a layer by id', () => {
     const doc = withLayer()
     expect(removeLayer(doc, doc.layers[0].id).layers).toHaveLength(0)

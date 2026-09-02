@@ -1,3 +1,4 @@
+import { randomLayer } from '../document/random'
 import { STARTERS } from '../document/starters'
 import { useStore } from '../state/store'
 
@@ -10,7 +11,9 @@ export default function EmptyState() {
       data-testid="empty-state"
       className="flex h-full flex-col items-center justify-center gap-4 p-8 text-xs"
     >
-      <p className="text-neutral-400">Start from one of these, or add an empty layer.</p>
+      <p className="text-neutral-400">
+        Start from one of these, roll a random layer, or add an empty one.
+      </p>
       <div className="flex flex-wrap justify-center gap-3">
         {STARTERS.map((starter) => (
           <button
@@ -23,12 +26,20 @@ export default function EmptyState() {
           </button>
         ))}
       </div>
-      <button
-        className="rounded border border-neutral-700 px-3 py-1 hover:bg-neutral-800"
-        onClick={() => addAndSelectLayer('layer 1')}
-      >
-        Start empty
-      </button>
+      <div className="flex gap-2">
+        <button
+          className="rounded border border-neutral-700 px-3 py-1 hover:bg-neutral-800"
+          onClick={() => addAndSelectLayer('layer 1', randomLayer)}
+        >
+          Start random
+        </button>
+        <button
+          className="rounded border border-neutral-700 px-3 py-1 hover:bg-neutral-800"
+          onClick={() => addAndSelectLayer('layer 1')}
+        >
+          Start empty
+        </button>
+      </div>
     </div>
   )
 }
