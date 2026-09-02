@@ -7,6 +7,7 @@ import {
   setShapeField, setRepeaterField, setFillChannel,
   setFill, setStroke, setStrokeChannel, setStrokeWidth,
   addRepeater, removeRepeater, moveRepeater, setRepeaterType,
+  setFillColour, setStrokeColour, setBackground,
 } from './ops'
 
 const withLayer = () => addLayer(emptyDocument(), 'halo')
@@ -530,5 +531,66 @@ describe('setRepeaterType', () => {
   it('returns the document by reference when the type is already that', () => {
     const base = withLayer()
     expect(setRepeaterType(base, base.layers[0].id, 0, 'radial')).toBe(base)
+  })
+})
+
+describe('whole-colour ops', () => {
+  const TEAL = { l: 0.72, c: 0.14, h: 205, a: 0.8 }
+
+  it('replaces every channel of the fill in one edit', () => {
+    const doc = withLayer()
+    const id = doc.layers[0].id
+    expect(setFillColour(doc, id, TEAL).layers[0].style.fill).toEqual(TEAL)
+  })
+
+  it('leaves a layer with no fill alone', () => {
+    const base = withLayer()
+    const id = base.layers[0].id
+    const doc = setFill(base, id, undefined)
+    expect(setFillColour(doc, id, TEAL).layers[0].style.fill).toBeUndefined()
+  })
+
+  it('replaces the stroke colour without disturbing its width', () => {
+    const base = withLayer()
+    const id = base.layers[0].id
+    const doc = setStroke(base, id, { colour: DEFAULT_STROKE.colour, width: 7 })
+    const stroke = setStrokeColour(doc, id, TEAL).layers[0].style.stroke!
+    expect(stroke).toEqual({ colour: TEAL, width: 7 })
+  })
+
+  it('leaves a layer with no stroke alone', () => {
+    const doc = withLayer()
+    const id = doc.layers[0].id
+    expect(setStrokeColour(doc, id, TEAL).layers[0].style.stroke).toBeUndefined()
+  })
+
+  it('replaces the canvas background', () => {
+    expect(setBackground(emptyDocument(), TEAL).canvas.background).toEqual(TEAL)
+  })
+
+  // Callers pass shared constants (DEFAULT_FILL) and picker state objects
+  // straight in, exactly as they do to setFill -- storing the reference would
+  // let two layers alias one Colour and edit each other.
+  it('stores a copy rather than the caller-owned colour', () => {
+    const doc = withLayer()
+    const id = doc.layers[0].id
+    const source = { ...TEAL }
+    const next = setFillColour(doc, id, source)
+    source.h = 999
+    expect(next.layers[0].style.fill!.h).toBe(205)
+
+    const bgSource = { ...TEAL }
+    const bg = setBackground(emptyDocument(), bgSource)
+    bgSource.h = 999
+    expect(bg.canvas.background.h).toBe(205)
+  })
+
+  it('leaves every result a valid document', () => {
+    const doc = withLayer()
+    const id = doc.layers[0].id
+    const withStroke = setStroke(doc, id, DEFAULT_STROKE)
+    expect(documentSchema.safeParse(setFillColour(doc, id, TEAL)).success).toBe(true)
+    expect(documentSchema.safeParse(setStrokeColour(withStroke, id, TEAL)).success).toBe(true)
+    expect(documentSchema.safeParse(setBackground(doc, TEAL)).success).toBe(true)
   })
 })

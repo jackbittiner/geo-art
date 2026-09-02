@@ -244,3 +244,38 @@ export function setStrokeWidth(doc: Document, id: LayerId, value: Field): Docume
     l.style.stroke ? { ...l, style: { ...l.style, stroke: { ...l.style.stroke, width: value } } } : l,
   )
 }
+
+/**
+ * Replaces the whole fill colour. No-op when the layer has no fill.
+ *
+ * The picker moves several channels at once -- one drag of the plane changes
+ * both lightness and chroma -- so it writes through here rather than looping
+ * setFillChannel, which would bank a separate undo entry per channel. Clones
+ * for the same reason setFill does: callers hand over picker state and shared
+ * constants that must not become aliased document contents.
+ */
+export function setFillColour(doc: Document, id: LayerId, colour: Colour): Document {
+  return updateLayer(doc, id, (l) =>
+    l.style.fill ? { ...l, style: { ...l.style, fill: structuredClone(colour) } } : l,
+  )
+}
+
+/** Replaces the whole stroke colour, leaving its width alone. No-op with no stroke. */
+export function setStrokeColour(doc: Document, id: LayerId, colour: Colour): Document {
+  return updateLayer(doc, id, (l) =>
+    l.style.stroke
+      ? { ...l, style: { ...l.style, stroke: { ...l.style.stroke, colour: structuredClone(colour) } } }
+      : l,
+  )
+}
+
+/**
+ * Replaces the canvas background.
+ *
+ * buildScene resolves the background against the root context, so a Modulated
+ * field here collapses to its base -- the Inspector offers no ramp for it, and
+ * this stores whatever it is handed without pretending otherwise.
+ */
+export function setBackground(doc: Document, colour: Colour): Document {
+  return { ...doc, canvas: { ...doc.canvas, background: structuredClone(colour) } }
+}

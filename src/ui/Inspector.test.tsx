@@ -11,6 +11,18 @@ import { isModulated, type Modulated } from '../geometry/field'
 // cast papering over doubt about the union.
 import type { RadialConfig, RepeaterConfig } from '../geometry/repeaters'
 
+/** The per-channel rows live under a fold now; open the one on this card. */
+function openChannels(card: 'fill' | 'stroke') {
+  fireEvent.click(
+    within(screen.getByTestId(`card-${card}`)).getByRole('button', { name: /advanced/i }),
+  )
+}
+
+/** The background picker is folded behind its own swatch. */
+function openBackground() {
+  fireEvent.click(screen.getByRole('button', { name: 'Edit background' }))
+}
+
 function seed() {
   const doc = emptyDocument()
   doc.layers.push(defaultLayer('halo'))
@@ -63,7 +75,8 @@ describe('Inspector', () => {
 
   it('edits a colour channel', () => {
     render(<Inspector />)
-    fireEvent.change(screen.getByLabelText('fill hue'), { target: { value: '120' } })
+    openChannels('fill')
+    fireEvent.change(screen.getByLabelText('fill channel hue'), { target: { value: '120' } })
     expect(useStore.getState().doc.layers[0].style.fill!.h).toBe(120)
   })
 
@@ -137,10 +150,11 @@ describe('Inspector', () => {
 
   it('renders the fill cards four channels for a layer with a fill', () => {
     render(<Inspector />)
-    expect(screen.getByLabelText('fill lightness')).toBeDefined()
-    expect(screen.getByLabelText('fill chroma')).toBeDefined()
-    expect(screen.getByLabelText('fill hue')).toBeDefined()
-    expect(screen.getByLabelText('fill alpha')).toBeDefined()
+    openChannels('fill')
+    expect(screen.getByLabelText('fill channel lightness')).toBeDefined()
+    expect(screen.getByLabelText('fill channel chroma')).toBeDefined()
+    expect(screen.getByLabelText('fill channel hue')).toBeDefined()
+    expect(screen.getByLabelText('fill channel alpha')).toBeDefined()
   })
 
   // This is the bug Phase 1 shipped: gating the whole style section on
@@ -162,15 +176,16 @@ describe('Inspector', () => {
       },
     })
     render(<Inspector />)
-    expect(screen.getByLabelText('stroke lightness')).toBeDefined()
-    expect(screen.getByLabelText('stroke chroma')).toBeDefined()
-    expect(screen.getByLabelText('stroke hue')).toBeDefined()
-    expect(screen.getByLabelText('stroke alpha')).toBeDefined()
+    openChannels('stroke')
+    expect(screen.getByLabelText('stroke channel lightness')).toBeDefined()
+    expect(screen.getByLabelText('stroke channel chroma')).toBeDefined()
+    expect(screen.getByLabelText('stroke channel hue')).toBeDefined()
+    expect(screen.getByLabelText('stroke channel alpha')).toBeDefined()
     expect(screen.getByLabelText('stroke width')).toBeDefined()
-    expect(screen.queryByLabelText('fill lightness')).toBeNull()
-    expect(screen.queryByLabelText('fill chroma')).toBeNull()
-    expect(screen.queryByLabelText('fill hue')).toBeNull()
-    expect(screen.queryByLabelText('fill alpha')).toBeNull()
+    expect(screen.queryByLabelText('fill channel lightness')).toBeNull()
+    expect(screen.queryByLabelText('fill channel chroma')).toBeNull()
+    expect(screen.queryByLabelText('fill channel hue')).toBeNull()
+    expect(screen.queryByLabelText('fill channel alpha')).toBeNull()
   })
 
   it('edits a stroke colour channel', () => {
@@ -187,7 +202,8 @@ describe('Inspector', () => {
       },
     })
     render(<Inspector />)
-    fireEvent.change(screen.getByLabelText('stroke hue'), { target: { value: '55' } })
+    openChannels('stroke')
+    fireEvent.change(screen.getByLabelText('stroke channel hue'), { target: { value: '55' } })
     expect(useStore.getState().doc.layers[0].style.stroke!.colour.h).toBe(55)
   })
 
@@ -319,7 +335,8 @@ describe('Inspector', () => {
       },
     })
     render(<Inspector />)
-    const cells = within(screen.getByTestId('field-stroke-h')).getAllByTestId('ramp-cell')
+    openChannels('stroke')
+    const cells = within(screen.getByTestId('field-stroke-channel-h')).getAllByTestId('ramp-cell')
     expect(cells.map((c) => c.getAttribute('data-colour'))).toEqual([
       'oklch(20% 0.05 100 / 0.6)',
       'oklch(20% 0.05 300 / 0.6)',
@@ -387,8 +404,9 @@ describe('Inspector', () => {
     }
     useStore.setState({ doc: before })
     render(<Inspector />)
+    openChannels('fill')
 
-    const chroma = screen.getByLabelText('fill chroma') as HTMLInputElement
+    const chroma = screen.getByLabelText('fill channel chroma') as HTMLInputElement
     expect(chroma.value).toBe('0.45')
     expect(chroma.max).toBe('0.5')
 
@@ -475,6 +493,7 @@ describe('Inspector', () => {
       },
     })
     render(<Inspector />)
+    openChannels('fill')
     expect(screen.getAllByTestId('ramp-caveat').length).toBeGreaterThan(0)
   })
 
@@ -523,10 +542,11 @@ describe('Inspector', () => {
       },
     })
     render(<Inspector />)
+    openChannels('fill')
 
     // The hue strip varies hue and must hold lightness at its *base* of 0.6
     // (60%), not at its ramp target of 0 (0%).
-    const hueCells = within(screen.getByTestId('field-fill-h')).getAllByTestId('ramp-cell')
+    const hueCells = within(screen.getByTestId('field-fill-channel-h')).getAllByTestId('ramp-cell')
     expect(hueCells.map((c) => c.getAttribute('data-colour'))).toEqual([
       'oklch(60% 0.2 0 / 1)',
       'oklch(60% 0.2 240 / 1)',
@@ -534,7 +554,7 @@ describe('Inspector', () => {
 
     // And symmetrically: the lightness strip holds hue at its base of 0, not
     // at its ramp target of 240.
-    const lightnessCells = within(screen.getByTestId('field-fill-l')).getAllByTestId('ramp-cell')
+    const lightnessCells = within(screen.getByTestId('field-fill-channel-l')).getAllByTestId('ramp-cell')
     expect(lightnessCells.map((c) => c.getAttribute('data-colour'))).toEqual([
       'oklch(60% 0.2 0 / 1)',
       'oklch(0% 0.2 0 / 1)',
@@ -576,11 +596,12 @@ describe('Inspector', () => {
   // names undo as existing to make safe.
   it('does not let the modulate toggle share a group with the ramp it reveals', () => {
     render(<Inspector />)
+    openChannels('fill')
 
-    fireEvent.click(screen.getByRole('button', { name: 'fill hue modulate' }))
+    fireEvent.click(screen.getByRole('button', { name: 'fill channel hue modulate' }))
     expect(useStore.getState().history.past).toHaveLength(1)
 
-    fireEvent.change(screen.getByLabelText('fill hue to'), { target: { value: '200' } })
+    fireEvent.change(screen.getByLabelText('fill channel hue to'), { target: { value: '200' } })
     expect(useStore.getState().history.past).toHaveLength(2)
 
     // And the two steps come back separately: one undo returns the ramp
@@ -596,9 +617,10 @@ describe('Inspector', () => {
   // afterwards used to join the group the button opened.
   it('does not let `constant` share a group with the slider that follows it', () => {
     render(<Inspector />)
-    fireEvent.click(screen.getByRole('button', { name: 'fill hue modulate' }))
+    openChannels('fill')
+    fireEvent.click(screen.getByRole('button', { name: 'fill channel hue modulate' }))
 
-    fireEvent.click(screen.getByRole('button', { name: 'fill hue make constant' }))
+    fireEvent.click(screen.getByRole('button', { name: 'fill channel hue make constant' }))
     expect(useStore.getState().history.past).toHaveLength(2)
 
     fireEvent.change(screen.getByLabelText('fill hue'), { target: { value: '200' } })
@@ -719,7 +741,8 @@ describe('Inspector', () => {
       // 24-cell sweep instead -- silently, with nothing truncated to warn on.
       chainWithRamps()
       render(<Inspector />)
-      const hues = cellsOf('fill hue preview')
+      openChannels('fill')
+      const hues = cellsOf('fill channel hue preview')
         .map((c) => Number(c.getAttribute('data-colour')!.split(' ')[2]))
       expect(hues).toEqual([0, 30, 60, 90, 120, 150, 180, 210, 240])
     })
@@ -756,7 +779,8 @@ describe('Inspector', () => {
         },
       })
       render(<Inspector />)
-      expect(cellsOf('fill lightness preview')).toHaveLength(24)
+      openChannels('fill')
+      expect(cellsOf('fill channel lightness preview')).toHaveLength(24)
     })
 
     it('shows a bare count for a link the budget cut short, product or no product', () => {
@@ -1032,5 +1056,122 @@ describe('levelCaveat', () => {
 
   it('still reports an uneven level below an uneven one', () => {
     expect(levelCaveat([false, false, false], [true, false, false], 2)).toBe('uneven')
+  })
+})
+
+describe('Inspector canvas card', () => {
+  beforeEach(() => { seed() })
+
+  it('edits the canvas background', () => {
+    render(<Inspector />)
+    openBackground()
+    fireEvent.change(screen.getByLabelText('background hue'), { target: { value: '120' } })
+    expect(useStore.getState().doc.canvas.background.h).toBe(120)
+  })
+
+  // buildScene resolves the background against the root context, so a ramp on
+  // it would collapse to its base without drawing anything.
+  it('offers no sweep for the background', () => {
+    render(<Inspector />)
+    openBackground()
+    expect(screen.queryByRole('button', { name: 'Toggle background ramp' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'background from' })).toBeNull()
+  })
+
+  it('reaches the background even while a layer is selected', () => {
+    render(<Inspector />)
+    expect(screen.getByTestId('card-canvas')).toBeDefined()
+    expect(screen.getByTestId('card-shape')).toBeDefined()
+  })
+
+  it('offers the background when no layer is selected at all', () => {
+    useStore.getState().select(null)
+    render(<Inspector />)
+    openBackground()
+    expect(screen.getByLabelText('background hue')).toBeDefined()
+  })
+
+  it('coalesces one background drag into a single undo entry', () => {
+    render(<Inspector />)
+    openBackground()
+    const hue = screen.getByLabelText('background hue')
+    fireEvent.change(hue, { target: { value: '120' } })
+    fireEvent.change(hue, { target: { value: '150' } })
+    fireEvent.pointerUp(hue)
+    useStore.getState().undo()
+    expect(useStore.getState().doc.canvas.background.h).toBe(emptyDocument().canvas.background.h)
+  })
+})
+
+describe('Inspector colour pickers', () => {
+  beforeEach(() => { seed() })
+
+  it('edits the fill through the picker', () => {
+    render(<Inspector />)
+    fireEvent.change(screen.getByLabelText('fill hue'), { target: { value: '120' } })
+    expect(useStore.getState().doc.layers[0].style.fill!.h).toBe(120)
+  })
+
+  it('edits the stroke through its own picker, leaving the fill alone', () => {
+    useStore.getState().apply((d) => ({
+      ...d,
+      layers: [{ ...d.layers[0], style: { fill: DEFAULT_FILL, stroke: DEFAULT_STROKE } }],
+    }))
+    render(<Inspector />)
+    fireEvent.change(screen.getByLabelText('stroke hue'), { target: { value: '120' } })
+    const style = useStore.getState().doc.layers[0].style
+    expect(style.stroke!.colour.h).toBe(120)
+    expect(style.fill!.h).toBe(DEFAULT_FILL.h)
+  })
+
+  it('coalesces one fill plane drag into a single undo entry', () => {
+    render(<Inspector />)
+    const hue = screen.getByLabelText('fill hue')
+    fireEvent.change(hue, { target: { value: '120' } })
+    fireEvent.change(hue, { target: { value: '150' } })
+    fireEvent.pointerUp(hue)
+    useStore.getState().undo()
+    expect(useStore.getState().doc.layers[0].style.fill!.h).toBe(DEFAULT_FILL.h)
+  })
+
+  // The two cards are independently optional and must never be confused for
+  // each other; a shared coalesce key would merge a stroke edit into a fill one.
+  it('does not merge a stroke edit into the fill’s undo entry', () => {
+    useStore.getState().apply((d) => ({
+      ...d,
+      layers: [{ ...d.layers[0], style: { fill: DEFAULT_FILL, stroke: DEFAULT_STROKE } }],
+    }))
+    render(<Inspector />)
+    fireEvent.change(screen.getByLabelText('fill hue'), { target: { value: '120' } })
+    fireEvent.change(screen.getByLabelText('stroke hue'), { target: { value: '30' } })
+    useStore.getState().undo()
+    const style = useStore.getState().doc.layers[0].style
+    expect(style.stroke!.colour.h).toBe(DEFAULT_STROKE.colour.h)
+    expect(style.fill!.h).toBe(120)
+  })
+})
+
+
+describe('Inspector stroke layout', () => {
+  beforeEach(() => { seed() })
+
+  // Width is a property of the stroke, not of its colour, and it used to
+  // render after the colour editor -- which ends with the advanced fold, so a
+  // lone `width` row sat underneath a disclosure it has nothing to do with.
+  it('puts the stroke width above the colour editor, not below its advanced fold', () => {
+    useStore.getState().apply((d) => ({
+      ...d,
+      layers: [{ ...d.layers[0], style: { fill: DEFAULT_FILL, stroke: DEFAULT_STROKE } }],
+    }))
+    render(<Inspector />)
+    const width = screen.getByLabelText('stroke width')
+    const picker = screen.getByLabelText('stroke hue')
+    const advanced = within(screen.getByTestId('card-stroke')).getByRole('button', {
+      name: /advanced/i,
+    })
+    const precedes = (a: Element, b: Element) =>
+      (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0
+    expect(precedes(width, picker), 'width should come before the picker').toBe(true)
+    expect(precedes(width, advanced), 'width should come before the advanced fold').toBe(true)
   })
 })

@@ -122,12 +122,13 @@ describe('ModulatorEditor', () => {
   })
 
   // Was asserted on spin, which now wraps -- see the spin test below. Shape
-  // radius is a genuinely non-wrapping perCopy field: 600px is 600px.
+  // radius is a genuinely non-wrapping perCopy field: a radius is a radius, so
+  // its `to` is bounded by the descriptor rather than widened around the base.
   it('bounds a non-wrapping field by its descriptor', () => {
     setup({ descriptor: shapeRadius, field: field({ base: 50, to: 300 }), accessibleName: 'shape radius' })
     const to = screen.getByLabelText('shape radius to') as HTMLInputElement
     expect(Number(to.min)).toBe(0)
-    expect(Number(to.max)).toBe(600)
+    expect(Number(to.max)).toBe(shapeRadius.max)
   })
 
   // spin's rampTo is a full turn, so toModulated(spin, 45) writes to: 405 --
@@ -148,16 +149,19 @@ describe('ModulatorEditor', () => {
   // file, a narrowed descriptor, a hand-edited document -- must be
   // representable, or rendering the editor is enough to lose it.
   it('widens the range to admit a `to` outside it, whatever its source', () => {
-    setup({ descriptor: shapeRadius, field: field({ base: 50, to: 900 }), accessibleName: 'shape radius' })
+    // Comfortably past the descriptor's ceiling, so raising that ceiling
+    // cannot quietly turn this into a test of the ordinary in-range case.
+    const beyond = shapeRadius.max + 300
+    setup({ descriptor: shapeRadius, field: field({ base: 50, to: beyond }), accessibleName: 'shape radius' })
     const above = screen.getByLabelText('shape radius to') as HTMLInputElement
-    expect(Number(above.max)).toBe(900)
+    expect(Number(above.max)).toBe(beyond)
     expect(Number(above.min)).toBe(0)
 
     cleanup()
     setup({ descriptor: shapeRadius, field: field({ base: 50, to: -200 }), accessibleName: 'shape radius' })
     const below = screen.getByLabelText('shape radius to') as HTMLInputElement
     expect(Number(below.min)).toBe(-200)
-    expect(Number(below.max)).toBe(600)
+    expect(Number(below.max)).toBe(shapeRadius.max)
   })
 
   // The invariant that would have caught the spin bug, stated once for every

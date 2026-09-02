@@ -1,6 +1,8 @@
 import type { EvalContext } from '../geometry/context'
+import type { Colour } from '../document/schema'
 import type { Modulated } from '../geometry/field'
 import { resolve } from '../geometry/field'
+import type { ResolvedColour } from '../geometry/instance'
 import type { FieldDescriptor } from './descriptors'
 
 /**
@@ -59,16 +61,7 @@ export const PREVIEW_CELLS = 24
  * lies with confidence. Pinned by the anti-drift test.
  */
 export function previewValues(field: Modulated, count: number): number[] {
-  const total = Math.max(0, Math.round(count))
-  if (total === 0) return []
-  const cells = Math.min(total, PREVIEW_CELLS)
-  return Array.from({ length: cells }, (_, k) => {
-    // Sample at the true index against the true total. Renumbering the cells
-    // 0..23 would normalise `t` against the wrong denominator and collapse a
-    // multi-cycle ramp into one cycle.
-    const i = cells === 1 ? 0 : Math.round((k * (total - 1)) / (cells - 1))
-    return resolve(field, previewContext(i, total))
-  })
+  return previewIndices(count).map(({ index, total }) => resolve(field, previewContext(index, total)))
 }
 
 function previewContext(i: number, total: number): EvalContext {
@@ -80,4 +73,44 @@ function previewContext(i: number, total: number): EvalContext {
     flatIndex: i,
     total,
   }
+}
+
+/**
+ * The whole colours the first `count` copies will actually receive.
+ *
+ * Resolves all four channels against one shared context per copy, which is
+ * what makes the two-chip strip honest: a per-channel preview can only show
+ * one channel sweeping while it invents plausible values for the other three
+ * (the Inspector used to do exactly that). Calls the engine's `resolve` for
+ * the same reason `previewValues` does, and is pinned by the same anti-drift
+ * test.
+ */
+export function previewColours(colour: Colour, count: number): ResolvedColour[] {
+  return previewIndices(count).map(({ index, total }) => {
+    const ctx = previewContext(index, total)
+    return {
+      l: resolve(colour.l, ctx),
+      c: resolve(colour.c, ctx),
+      h: resolve(colour.h, ctx),
+      a: resolve(colour.a, ctx),
+    }
+  })
+}
+
+/**
+ * The copies a strip samples: every one of them below PREVIEW_CELLS, and
+ * beyond that an even spread of true indices against the true total.
+ *
+ * Shared by both previews so they can never disagree about which copies they
+ * are describing. Renumbering the cells 0..23 instead would normalise `t`
+ * against the wrong denominator and collapse a multi-cycle ramp into one.
+ */
+function previewIndices(count: number): { index: number; total: number }[] {
+  const total = Math.max(0, Math.round(count))
+  if (total === 0) return []
+  const cells = Math.min(total, PREVIEW_CELLS)
+  return Array.from({ length: cells }, (_, k) => ({
+    index: cells === 1 ? 0 : Math.round((k * (total - 1)) / (cells - 1)),
+    total,
+  }))
 }

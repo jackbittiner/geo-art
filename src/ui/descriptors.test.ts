@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { SHAPE_FIELDS, REPEATER_FIELDS, COLOUR_FIELDS, STROKE_FIELDS, type FieldDescriptor } from './descriptors'
+import { emptyDocument } from '../document/defaults'
 
 const geometryFields: FieldDescriptor[] = [
   ...Object.values(SHAPE_FIELDS).flat(),
@@ -86,5 +87,37 @@ describe('descriptor modulation metadata', () => {
     expect(width.min).toBe(0)
     expect(width.max).toBe(40)
     expect(width.unit).toBe('px')
+  })
+})
+
+
+describe('descriptor range', () => {
+  // Sizes and gaps were capped well below the canvas: a grid could not space
+  // its cells more than 400px apart on a 1200px canvas, so the airy, sparse
+  // compositions were simply unreachable from the sliders. Pinned against the
+  // canvas rather than a literal, so the two cannot drift apart.
+  const canvas = emptyDocument().canvas.width
+
+  it('lets every size field reach across the whole canvas', () => {
+    const sizes = Object.values(SHAPE_FIELDS).flat().filter((d) => d.unit === 'px')
+    expect(sizes.length).toBeGreaterThan(0)
+    for (const d of sizes) {
+      expect(d.max, `shape ${d.key} should span the canvas`).toBeGreaterThanOrEqual(canvas)
+    }
+  })
+
+  it('lets every repeater gap reach across the whole canvas', () => {
+    const gaps = Object.values(REPEATER_FIELDS).flat().filter((d) => d.unit === 'px')
+    expect(gaps.length).toBeGreaterThan(0)
+    for (const d of gaps) {
+      expect(d.max, `repeater ${d.key} should span the canvas`).toBeGreaterThanOrEqual(canvas)
+    }
+  })
+
+  it('lets a radial ring place its copies beyond the canvas edge', () => {
+    // A ring only reads as an arc across the frame when its radius can exceed
+    // the frame; capped at the canvas it can only ever draw a full circle.
+    const radius = REPEATER_FIELDS.radial.find((d) => d.key === 'radius')!
+    expect(radius.max).toBeGreaterThan(canvas)
   })
 })

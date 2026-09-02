@@ -51,18 +51,26 @@ export type FieldDescriptor = {
   perCopy?: boolean
 }
 
+/**
+ * Size and gap ceilings are set against the default 1200px canvas rather than
+ * picked by eye: a shape should be able to span the whole frame, a grid should
+ * be able to space its cells right across it, and a radial ring should be able
+ * to push its copies past the edge so it reads as an arc rather than a circle.
+ * The old caps (600px shapes, 400px grid gaps) put sparse, airy compositions
+ * out of reach of the sliders entirely. Pinned by the descriptor range tests.
+ */
 export const SHAPE_FIELDS: Record<ShapeType, FieldDescriptor[]> = {
   polygon: [
     { key: 'sides', label: 'sides', min: 3, max: 60, step: 1, perCopy: true },
-    { key: 'radius', label: 'radius', min: 0, max: 600, unit: 'px', perCopy: true },
+    { key: 'radius', label: 'radius', min: 0, max: 1200, unit: 'px', perCopy: true },
     {
       key: 'rotation', label: 'rotation', min: -360, max: 360, unit: '°',
       perCopy: true, wraps: true, rampTo: { kind: 'offset', delta: 360 },
     },
   ],
   ellipse: [
-    { key: 'rx', label: 'rx', min: 0, max: 600, unit: 'px', perCopy: true },
-    { key: 'ry', label: 'ry', min: 0, max: 600, unit: 'px', perCopy: true },
+    { key: 'rx', label: 'rx', min: 0, max: 1200, unit: 'px', perCopy: true },
+    { key: 'ry', label: 'ry', min: 0, max: 1200, unit: 'px', perCopy: true },
     {
       key: 'rotation', label: 'rotation', min: -360, max: 360, unit: '°',
       perCopy: true, wraps: true, rampTo: { kind: 'offset', delta: 360 },
@@ -75,7 +83,7 @@ export const REPEATER_FIELDS: Record<RepeaterType, FieldDescriptor[]> = {
     // count, radius and startAngle resolve against the parent context, so with
     // a single repeater they cannot vary: no perCopy, no toggle. See spec §4a.
     { key: 'count', label: 'count', min: 1, max: 200, step: 1 },
-    { key: 'radius', label: 'radius', min: 0, max: 800, unit: 'px' },
+    { key: 'radius', label: 'radius', min: 0, max: 2000, unit: 'px' },
     { key: 'startAngle', label: 'start', min: -360, max: 360, unit: '°' },
     {
       key: 'spin', label: 'spin', min: -360, max: 360, unit: '°',
@@ -88,8 +96,8 @@ export const REPEATER_FIELDS: Record<RepeaterType, FieldDescriptor[]> = {
   grid: [
     { key: 'rows', label: 'rows', min: 1, max: 40, step: 1 },
     { key: 'cols', label: 'cols', min: 1, max: 40, step: 1 },
-    { key: 'spacingX', label: 'spacing x', min: 0, max: 400, unit: 'px' },
-    { key: 'spacingY', label: 'spacing y', min: 0, max: 400, unit: 'px' },
+    { key: 'spacingX', label: 'spacing x', min: 0, max: 1600, unit: 'px' },
+    { key: 'spacingY', label: 'spacing y', min: 0, max: 1600, unit: 'px' },
     {
       key: 'spin', label: 'spin', min: -360, max: 360, unit: '°',
       perCopy: true, wraps: true, rampTo: { kind: 'offset', delta: 360 },

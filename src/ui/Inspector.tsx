@@ -4,21 +4,26 @@ import {
   addRepeater,
   moveRepeater,
   removeRepeater,
+  setBackground,
   setFill,
   setFillChannel,
+  setFillColour,
   setRepeaterField,
   setRepeaterType,
   setShapeField,
   setShapeType,
   setStroke,
   setStrokeChannel,
+  setStrokeColour,
   setStrokeWidth,
 } from '../document/ops'
-import type { Colour, LayerId, ShapeType } from '../document/schema'
+import type { Colour, Layer, LayerId, ShapeType } from '../document/schema'
 import { isModulated, type Field } from '../geometry/field'
 import type { RepeaterType } from '../geometry/repeaters'
 import { colourToCss } from '../render/colour'
 import { useStore } from '../state/store'
+import { endpointColour } from './colourRamp'
+import ColourEditor from './controls/ColourEditor'
 import FieldRow from './controls/FieldRow'
 import { COLOUR_FIELDS, REPEATER_FIELDS, SHAPE_FIELDS, STROKE_FIELDS } from './descriptors'
 import type { PreviewCaveat } from './modulation'
@@ -147,20 +152,70 @@ function StyleCard({
 export default function Inspector() {
   const doc = useStore((s) => s.doc)
   const selectedLayerId = useStore((s) => s.selectedLayerId)
+  const layer = doc.layers.find((l) => l.id === selectedLayerId)
+
+  return (
+    <div className="h-full overflow-y-auto text-xs">
+      <CanvasCard />
+      {layer ? (
+        <LayerCards layer={layer} />
+      ) : (
+        <div data-testid="inspector-empty" className="p-3 text-neutral-500">
+          Select a layer to edit it.
+        </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * The canvas background, which belongs to the document rather than to a layer
+ * -- so it sits above the layer cards and stays reachable with nothing
+ * selected. Folded behind its own swatch: it is set once or twice per drawing
+ * and does not deserve 150px at the top of every session.
+ *
+ * No sweep is offered. buildScene resolves the background against the root
+ * context, so a ramp here would collapse to its base and draw nothing.
+ */
+function CanvasCard() {
+  const background = useStore((s) => s.doc.canvas.background)
+  const apply = useStore((s) => s.apply)
+  const endCoalesce = useStore((s) => s.endCoalesce)
+  const [open, setOpen] = useState(false)
+
+  return (
+    <div className={CARD} data-testid="card-canvas">
+      <div className={HEADING}>
+        Canvas
+        <button
+          type="button"
+          aria-label="Edit background"
+          aria-expanded={open}
+          title="Canvas background"
+          className={`ml-auto h-5 w-8 shrink-0 rounded border ${
+            open ? 'border-sky-500' : 'border-neutral-700 hover:border-neutral-500'
+          }`}
+          style={{ background: colourToCss(endpointColour(background, 'from')) }}
+          onClick={() => setOpen((v) => !v)}
+        />
+      </div>
+      {open && (
+        <ColourEditor
+          label="background"
+          colour={background}
+          onChange={(colour) => apply((d) => setBackground(d, colour), 'canvas-background')}
+          onCommit={endCoalesce}
+        />
+      )}
+    </div>
+  )
+}
+
+function LayerCards({ layer }: { layer: Layer }) {
   const apply = useStore((s) => s.apply)
   const endCoalesce = useStore((s) => s.endCoalesce)
   const result = useEvaluation()
   const [stashes, setStashes] = useState<Record<LayerId, Stash>>({})
-
-  const layer = doc.layers.find((l) => l.id === selectedLayerId)
-
-  if (!layer) {
-    return (
-      <div data-testid="inspector-empty" className="p-3 text-xs text-neutral-500">
-        Select a layer to edit it.
-      </div>
-    )
-  }
 
   const layerCount = result.perLayerCounts[layer.id] ?? 0
   const levels = result.perLayerLevelCounts[layer.id] ?? []
@@ -217,7 +272,7 @@ export default function Inspector() {
   }
 
   return (
-    <div className="h-full overflow-y-auto text-xs">
+    <>
       <div className={CARD} data-testid="card-shape">
         <div className={HEADING}>
           Shape
@@ -349,27 +404,39 @@ export default function Inspector() {
         onToggle={toggleFill}
         offMessage="No fill — this shape is drawn as an outline only."
       >
-        {layer.style.fill &&
-          COLOUR_FIELDS.map((descriptor) => (
-            <FieldRow
-              key={descriptor.key}
-              scope="fill"
-              descriptor={descriptor}
-              value={layer.style.fill![descriptor.key as 'l' | 'c' | 'h' | 'a']}
-              count={innerCopies}
-              layerCount={layerCount}
-              resolution="instance"
-              caveat={innerCaveat}
-              toColour={swatchFor(layer.style.fill!)(descriptor.key as 'l' | 'c' | 'h' | 'a')}
-              onChange={(v) =>
-                apply(
-                  (d) => setFillChannel(d, layer.id, descriptor.key as 'l' | 'c' | 'h' | 'a', v),
-                  `fill-${descriptor.key}`,
-                )
-              }
-              onCommit={endCoalesce}
-            />
-          ))}
+        {layer.style.fill && (
+          <ColourEditor
+            label="fill"
+            colour={layer.style.fill}
+            copies={innerCopies}
+            caveat={innerCaveat}
+            onChange={(colour) =>
+              apply((d) => setFillColour(d, layer.id, colour), 'fill-colour')
+            }
+            onCommit={endCoalesce}
+          >
+            {COLOUR_FIELDS.map((descriptor) => (
+              <FieldRow
+                key={descriptor.key}
+                scope="fill channel"
+                descriptor={descriptor}
+                value={layer.style.fill![descriptor.key as 'l' | 'c' | 'h' | 'a']}
+                count={innerCopies}
+                layerCount={layerCount}
+                resolution="instance"
+                caveat={innerCaveat}
+                toColour={swatchFor(layer.style.fill!)(descriptor.key as 'l' | 'c' | 'h' | 'a')}
+                onChange={(v) =>
+                  apply(
+                    (d) => setFillChannel(d, layer.id, descriptor.key as 'l' | 'c' | 'h' | 'a', v),
+                    `fill-${descriptor.key}`,
+                  )
+                }
+                onCommit={endCoalesce}
+              />
+            ))}
+          </ColourEditor>
+        )}
       </StyleCard>
 
       <StyleCard
@@ -381,26 +448,10 @@ export default function Inspector() {
       >
         {layer.style.stroke && (
           <>
-            {COLOUR_FIELDS.map((descriptor) => (
-              <FieldRow
-                key={descriptor.key}
-                scope="stroke"
-                descriptor={descriptor}
-                value={layer.style.stroke!.colour[descriptor.key as 'l' | 'c' | 'h' | 'a']}
-                count={innerCopies}
-                layerCount={layerCount}
-                resolution="instance"
-                caveat={innerCaveat}
-                toColour={swatchFor(layer.style.stroke!.colour)(descriptor.key as 'l' | 'c' | 'h' | 'a')}
-                onChange={(v) =>
-                  apply(
-                    (d) => setStrokeChannel(d, layer.id, descriptor.key as 'l' | 'c' | 'h' | 'a', v),
-                    `stroke-${descriptor.key}`,
-                  )
-                }
-                onCommit={endCoalesce}
-              />
-            ))}
+            {/* Width leads the card: it belongs to the stroke rather than to
+                its colour, and rendering it after the colour editor left it
+                sitting under an `advanced` disclosure it has nothing to do
+                with. */}
             {STROKE_FIELDS.map((descriptor) => (
               <FieldRow
                 key={descriptor.key}
@@ -415,6 +466,37 @@ export default function Inspector() {
                 onCommit={endCoalesce}
               />
             ))}
+            <ColourEditor
+              label="stroke"
+              colour={layer.style.stroke.colour}
+              copies={innerCopies}
+              caveat={innerCaveat}
+              onChange={(colour) =>
+                apply((d) => setStrokeColour(d, layer.id, colour), 'stroke-colour')
+              }
+              onCommit={endCoalesce}
+            >
+              {COLOUR_FIELDS.map((descriptor) => (
+                <FieldRow
+                  key={descriptor.key}
+                  scope="stroke channel"
+                  descriptor={descriptor}
+                  value={layer.style.stroke!.colour[descriptor.key as 'l' | 'c' | 'h' | 'a']}
+                  count={innerCopies}
+                  layerCount={layerCount}
+                  resolution="instance"
+                  caveat={innerCaveat}
+                  toColour={swatchFor(layer.style.stroke!.colour)(descriptor.key as 'l' | 'c' | 'h' | 'a')}
+                  onChange={(v) =>
+                    apply(
+                      (d) => setStrokeChannel(d, layer.id, descriptor.key as 'l' | 'c' | 'h' | 'a', v),
+                      `stroke-${descriptor.key}`,
+                    )
+                  }
+                  onCommit={endCoalesce}
+                />
+              ))}
+            </ColourEditor>
           </>
         )}
       </StyleCard>
@@ -424,6 +506,6 @@ export default function Inspector() {
           Neither fill nor stroke is set, so this layer will not draw.
         </div>
       )}
-    </div>
+    </>
   )
 }

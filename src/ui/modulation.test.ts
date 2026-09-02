@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { toModulated, previewValues, PREVIEW_CELLS } from './modulation'
+import { toModulated, previewValues, previewColours, PREVIEW_CELLS } from './modulation'
 import { COLOUR_FIELDS, SHAPE_FIELDS, REPEATER_FIELDS, type FieldDescriptor } from './descriptors'
 import { evaluate } from '../geometry/evaluate'
 import { emptyDocument, defaultLayer } from '../document/defaults'
@@ -38,7 +38,7 @@ describe('toModulated', () => {
 
   it('falls back to max when no target is declared', () => {
     expect(toModulated(shape('sides'), 6).to).toBe(60)
-    expect(toModulated(shape('radius'), 60).to).toBe(600)
+    expect(toModulated(shape('radius'), 60).to).toBe(shape('radius').max)
   })
 
   it('gives spin a full turn from wherever it started', () => {
@@ -239,5 +239,53 @@ describe('previewValues', () => {
     // across those 6 and promises the full 240.
     expect(previewValues(hue, result.perLayerCounts[layer.id]))
       .toEqual([0, 48, 96, 144, 192, 240])
+  })
+})
+
+describe('previewColours', () => {
+  it('holds every channel flat when nothing is modulated', () => {
+    const flat = { l: 0.6, c: 0.2, h: 280, a: 0.5 }
+    expect(previewColours(flat, 3)).toEqual([
+      { l: 0.6, c: 0.2, h: 280, a: 0.5 },
+      { l: 0.6, c: 0.2, h: 280, a: 0.5 },
+      { l: 0.6, c: 0.2, h: 280, a: 0.5 },
+    ])
+  })
+
+  it('returns no cells when the layer produces no copies', () => {
+    expect(previewColours({ l: 0.6, c: 0.2, h: 280, a: 1 }, 0)).toEqual([])
+  })
+
+  it('sweeps a modulated channel while the flat ones hold at their value', () => {
+    const ramped = {
+      l: 0.6,
+      c: 0.2,
+      h: { base: 0, to: 240, source: 'index', curve: 'linear' } as Modulated,
+      a: 1,
+    }
+    const cells = previewColours(ramped, 3)
+    expect(cells.map((cell) => cell.h)).toEqual([0, 120, 240])
+    expect(cells.every((cell) => cell.l === 0.6 && cell.c === 0.2 && cell.a === 1)).toBe(true)
+  })
+
+  // The same anti-drift property previewValues has, but across all four
+  // channels at once: the strip under the two chips is the only place a whole
+  // colour is previewed, so a second implementation of the ramp maths here
+  // would misdescribe every gradient in the app with total confidence.
+  it('matches the colours the engine actually resolves', () => {
+    const doc = emptyDocument()
+    const layer = defaultLayer('halo')
+    ;(layer.repeaters[0] as RadialConfig).count = 12
+    const ramped = {
+      l: { base: 0.3, to: 0.9, source: 'index', curve: 'easeOut' } as Modulated,
+      c: 0.2,
+      h: { base: 0, to: 240, source: 'index', curve: 'linear' } as Modulated,
+      a: { base: 1, to: 0.2, source: 'index', curve: 'linear' } as Modulated,
+    }
+    layer.style.fill = ramped
+    doc.layers.push(layer)
+
+    const actual = evaluate(doc).layers[0].instances.map((i) => i.style.fill!)
+    expect(previewColours(ramped, 12)).toEqual(actual)
   })
 })
