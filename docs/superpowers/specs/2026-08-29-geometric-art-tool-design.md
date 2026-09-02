@@ -274,6 +274,9 @@ resolve(field: Field, ctx: EvalContext): number
 ### 7.2 Randomness must be keyed, not sequential
 
 Every random draw is `hash(docSeed, layerId, fieldId, flatIndex) → value`, never a running stream.
+(Scoped to draws made *during evaluation*. `randomLayer` — the empty state's "Start random" — is
+an authoring-time roll: it runs a sequential stream once, freezes the result into the document, and
+is never re-sampled, so there is nothing downstream for it to reshuffle.)
 
 With a sequential stream, adding a layer or bumping a count reshuffles the randomness of everything downstream — nudge one slider and a composition you spent twenty minutes on rearranges itself. Keyed hashing means layer 3's jitter is stable regardless of what happens to layers 1, 2 and 4, and re-rolling means deliberately changing `docSeed`. One-line implementation difference; enormous difference in whether the tool is trustworthy.
 
