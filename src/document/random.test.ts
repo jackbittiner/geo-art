@@ -22,13 +22,26 @@ function draws(n: number, rng: Rng = Math.random): Layer[] {
   return Array.from({ length: n }, (_, i) => randomLayer(`layer ${i}`, rng))
 }
 
+/**
+ * An rng that replays a fixed queue, so a test can steer the generator down a
+ * branch a constant rng never reaches. Running dry means the draw order moved.
+ */
+function scripted(values: readonly number[]): Rng {
+  let i = 0
+  return () => {
+    if (i >= values.length) throw new Error(`scripted rng exhausted after ${values.length} draws`)
+    return values[i++]
+  }
+}
+
 // The largest double below 1. `Math.random` never returns 1, so this is the
 // top of every range the generator can actually reach.
 const ALMOST_ONE = 1 - Number.EPSILON / 2
 
 describe('randomLayer', () => {
-  // The two tests below pin the draw order and every range endpoint. They are
-  // the reason a later tweak to a range cannot pass unnoticed.
+  // The two tests below pin the draw order and every endpoint a constant rng
+  // can reach. That rng can only ever land on the spin branch or on no
+  // modulation at all, so the hue ramp is pinned separately, further down.
   it('bottoms out every range when the rng returns 0', () => {
     const layer = randomLayer('rolled', () => 0)
     expect(layer).toMatchObject({
@@ -73,6 +86,45 @@ describe('randomLayer', () => {
     expect(fill.c).toBeCloseTo(0.2, 6)
     expect(fill.h).toBeCloseTo(360, 6)
     expect(fill.a).toBeCloseTo(0.5, 6)
+  })
+
+  // A constant rng cannot reach the hue ramp: 0 picks 'spin', and anything at
+  // or above 0.5 loses the coin flip. So the two tests below script the queue
+  // instead, holding everything ahead of the ramp still. These ten zeroes are
+  // that prefix — shape 'polygon' and repeater 'radial', both with every field
+  // at its floor, then l and c at theirs. Each test then supplies the six draws
+  // that matter: base hue, alpha, the winning coin flip, the 'hue' pick, and
+  // the ramp's own span and curve.
+  const BEFORE_HUE = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+
+  it('ramps hue from the drawn base by the bottom of the span', () => {
+    // hue 0.25 -> 90 degrees, so a dropped `hue +` base offset shows up as
+    // `to` collapsing to the bare span.
+    const layer = randomLayer('rolled', scripted([...BEFORE_HUE, 0.25, 0, 0, 0.5, 0, 0]))
+
+    expect(layer.style.fill!.h).toEqual({
+      base: 90,
+      to: 150,
+      source: 'index',
+      curve: 'linear',
+    })
+    // The ramp is the whole modulation: the spin branch is the road not taken.
+    expect(layer.repeaters[0].spin).toBe(0)
+  })
+
+  it('ramps hue from the drawn base by the top of the span', () => {
+    const layer = randomLayer(
+      'rolled',
+      scripted([...BEFORE_HUE, 0.5, 0, 0, 0.5, ALMOST_ONE, ALMOST_ONE]),
+    )
+
+    const h = layer.style.fill!.h
+    if (!isModulated(h)) throw new Error('unreachable')
+    expect(h.base).toBeCloseTo(180, 6)
+    expect(h.to).toBeCloseTo(360, 6)
+    expect(h.source).toBe('index')
+    expect(h.curve).toBe('exp')
+    expect(layer.repeaters[0].spin).toBe(0)
   })
 
   it('produces a layer the schema accepts, on every draw', () => {
