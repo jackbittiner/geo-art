@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { emptyDocument } from '../document/defaults'
-import { addLayer } from '../document/ops'
+import { addLayer, type LayerFactory } from '../document/ops'
 import type { Document, LayerId } from '../document/schema'
 import { DEFAULT_VIEWPORT, type Viewport } from '../render/renderer'
 import { closeGroup, emptyHistory, record, redo as redoHistory, undo as undoHistory, type History } from './history'
@@ -33,7 +33,8 @@ type State = {
   redo: () => void
   /** Ends the current coalesce group, on pointer release or blur. */
   endCoalesce: () => void
-  addAndSelectLayer: (name?: string) => void
+  /** `make` defaults to `defaultLayer`; "Start random" passes `randomLayer`. */
+  addAndSelectLayer: (name?: string, make?: LayerFactory) => void
 }
 
 /** Keeps the selection honest: a layer that no longer exists cannot stay selected. */
@@ -110,9 +111,9 @@ export const useStore = create<State>((set) => ({
 
   endCoalesce: () => set((state) => ({ history: closeGroup(state.history) })),
 
-  addAndSelectLayer: (name = 'layer') =>
+  addAndSelectLayer: (name = 'layer', make) =>
     set((state) => {
-      const doc = addLayer(state.doc, name)
+      const doc = addLayer(state.doc, name, make)
       return {
         doc,
         history: record(state.history, state.doc, null, Date.now()),

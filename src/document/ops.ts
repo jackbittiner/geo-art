@@ -8,8 +8,15 @@ const DEFAULT_SHAPES: Record<ShapeType, ShapeConfig> = {
   ellipse: { type: 'ellipse', rx: 60, ry: 40, rotation: 0 },
 }
 
-export function addLayer(doc: Document, name = 'layer'): Document {
-  return { ...doc, layers: [...doc.layers, defaultLayer(name)] }
+/** Builds the layer `addLayer` appends. `randomLayer` is the other one. */
+export type LayerFactory = (name: string) => Layer
+
+export function addLayer(
+  doc: Document,
+  name = 'layer',
+  make: LayerFactory = defaultLayer,
+): Document {
+  return { ...doc, layers: [...doc.layers, make(name)] }
 }
 
 export function removeLayer(doc: Document, id: LayerId): Document {

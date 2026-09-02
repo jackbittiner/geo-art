@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { useStore } from './store'
-import { emptyDocument } from '../document/defaults'
+import { defaultLayer, emptyDocument } from '../document/defaults'
 import { removeLayer, setCanvasSize } from '../document/ops'
 import { emptyHistory } from './history'
 
@@ -25,6 +25,14 @@ describe('store', () => {
     const { doc, selectedLayerId } = useStore.getState()
     expect(doc.layers).toHaveLength(1)
     expect(selectedLayerId).toBe(doc.layers[0].id)
+  })
+
+  it('adds a layer built by the supplied factory, and selects it', () => {
+    const rolled = { ...defaultLayer('rolled'), opacity: 0.5 }
+    useStore.getState().addAndSelectLayer('halo', () => rolled)
+    const { doc, selectedLayerId } = useStore.getState()
+    expect(doc.layers).toEqual([rolled])
+    expect(selectedLayerId).toBe(rolled.id)
   })
 
   it('applies a pure op', () => {
